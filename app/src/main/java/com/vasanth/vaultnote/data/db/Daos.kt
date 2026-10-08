@@ -64,6 +64,24 @@ interface NoteDao {
 
     @Query("INSERT INTO notes_fts(noteId, title, body) VALUES(:id, :title, :body)")
     suspend fun insertFts(id: String, title: String, body: String)
+
+    @Query("SELECT * FROM notes WHERE driveFileId = :fileId LIMIT 1")
+    suspend fun getByDriveFileId(fileId: String): NoteEntity?
+
+    @Query("UPDATE notes SET driveFileId = :fileId, remoteModifiedTime = :remoteTime WHERE id = :id")
+    suspend fun setDriveInfo(id: String, fileId: String, remoteTime: Long)
+
+    @Query("UPDATE notes SET dirty = 0, syncedAt = :now WHERE id = :id AND updatedAt = :updatedAt")
+    suspend fun markClean(id: String, updatedAt: Long, now: Long)
+
+    @Query("UPDATE notes SET driveFileId = NULL, remoteModifiedTime = NULL WHERE id = :id")
+    suspend fun clearDriveInfo(id: String)
+
+    @Query("UPDATE notes SET driveFileId = NULL, remoteModifiedTime = NULL, dirty = 1")
+    suspend fun clearAllDriveInfo()
+
+    @Query("UPDATE notes SET dirty = 1 WHERE driveFileId IS NULL")
+    suspend fun markUnsyncedDirty()
 }
 
 @Dao
@@ -108,4 +126,10 @@ interface SyncStateDao {
 
     @Query("SELECT value FROM sync_state WHERE `key` = :key")
     suspend fun get(key: String): String?
+
+    @Query("SELECT `key` FROM sync_state WHERE `key` LIKE :prefix || '%'")
+    suspend fun keysWithPrefix(prefix: String): List<String>
+
+    @Query("DELETE FROM sync_state WHERE `key` = :key")
+    suspend fun delete(key: String)
 }

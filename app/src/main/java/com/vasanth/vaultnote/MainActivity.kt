@@ -17,6 +17,8 @@ import com.vasanth.vaultnote.reminder.Notifier
 import com.vasanth.vaultnote.security.AppLockManager
 import com.vasanth.vaultnote.security.LockState
 import com.vasanth.vaultnote.util.ScreenGuard
+import com.vasanth.vaultnote.sync.SyncManager
+import kotlinx.coroutines.delay
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -25,6 +27,7 @@ import javax.inject.Inject
 class MainActivity : AppCompatActivity() {
 
     @Inject lateinit var appLock: AppLockManager
+    @Inject lateinit var syncManager: SyncManager
 
     /** A note to open after unlocking (from a notification tap). */
     private var pendingNoteId: String? = null
@@ -60,6 +63,16 @@ class MainActivity : AppCompatActivity() {
                 appLock.state.collect { route(it) }
             }
         }
+
+        // pull changes about once a minute while the app is open and unlocked
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                while (true) {
+                    if (appLock.state.value == LockState.UNLOCKED) syncManager.syncNow()
+                    delay(60_000)
+                }
+            }
+        }
     }
 
     override fun onResume() {
@@ -91,6 +104,7 @@ class MainActivity : AppCompatActivity() {
             LockState.UNLOCKED -> {
                 if (dest in gateIds) leaveGate(dest)
                 openPendingNote()
+                lifecycleScope.launch { syncManager.syncNow() }
             }
         }
     }

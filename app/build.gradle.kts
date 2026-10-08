@@ -71,4 +71,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-process:2.9.2")
     implementation("net.zetetic:sqlcipher-android:4.9.0@aar")
     implementation("androidx.sqlite:sqlite:2.5.2")
+
+    implementation("com.google.android.gms:play-services-auth:21.6.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
 }

@@ -47,5 +47,14 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="32dp"
             android:text="Get started" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/restoreButton"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="I already use VaultNote: restore from Google Drive" />
+
     </LinearLayout>
 </ScrollView>

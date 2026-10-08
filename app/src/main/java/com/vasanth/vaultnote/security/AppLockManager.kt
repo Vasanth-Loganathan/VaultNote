@@ -57,4 +57,9 @@ class AppLockManager @Inject constructor(
         lockEpoch++
         _state.value = LockState.LOCKED
     }
+
+    /** A keyring was restored from Drive on a fresh install: show the unlock screen next. */
+    fun onKeyringInstalled() {
+        if (keyring.isSetUp()) _state.value = LockState.LOCKED
+    }
 }

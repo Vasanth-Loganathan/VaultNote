@@ -3,6 +3,7 @@ package com.vasanth.vaultnote.data
 import androidx.room.withTransaction
 import com.vasanth.vaultnote.data.db.*
 import com.vasanth.vaultnote.reminder.ReminderScheduler
+import com.vasanth.vaultnote.sync.SyncScheduler
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import javax.inject.Inject
@@ -14,7 +15,9 @@ class NoteRepository @Inject constructor(
     private val noteDao: NoteDao,
     private val tagDao: TagDao,
     private val linkDao: LinkDao,
-    private val scheduler: ReminderScheduler
+    private val syncStateDao: SyncStateDao,
+    private val scheduler: ReminderScheduler,
+    private val syncScheduler: SyncScheduler
 ) {
     // ---------- observe ----------
     fun observeActive(): Flow<List<NoteEntity>> = noteDao.observeActive()
@@ -33,12 +36,23 @@ class NoteRepository @Inject constructor(
 
     suspend fun getNote(id: String): NoteEntity? = noteDao.getById(id)
     suspend fun getTags(noteId: String): List<String> = tagDao.tagsForNote(noteId)
+    suspend fun findByTitle(title: String): NoteEntity? = noteDao.findByTitle(title.trim())
 
     // ---------- save ----------
-    /** Saves note + tags, refreshes search index and [[links]], marks dirty, updates the alarm. */
+    /** A local edit: stamps the time, marks the note for upload and schedules a sync. */
     suspend fun saveNote(note: NoteEntity, tags: List<String>): NoteEntity {
-        val saved = db.withTransaction {
-            val s = note.copy(updatedAt = System.currentTimeMillis(), dirty = true)
+        val saved = persist(note.copy(updatedAt = System.currentTimeMillis(), dirty = true), tags)
+        syncScheduler.schedulePush()
+        return saved
+    }
+
+    /** A note that came from Drive: keeps its own timestamps and is not marked for upload. */
+    suspend fun applyRemote(note: NoteEntity, tags: List<String>) {
+        persist(note.copy(dirty = false, syncedAt = System.currentTimeMillis()), tags)
+    }
+
+    private suspend fun persist(s: NoteEntity, tags: List<String>): NoteEntity {
+        db.withTransaction {
             noteDao.upsert(s)
 
             val indexBody = if (s.type == NoteType.CHECKLIST)
@@ -57,16 +71,14 @@ class NoteRepository @Inject constructor(
                 }
             tagDao.deleteUnusedTags()
 
-            // rebuild outgoing [[links]]
             linkDao.clearFrom(s.id)
             extractLinkTitles(s).forEach { title ->
                 val target = noteDao.findByTitle(title)
                 if (target != null && target.id != s.id) linkDao.insert(LinkEntity(s.id, target.id))
             }
-            s
         }
-        scheduler.sync(saved)
-        return saved
+        scheduler.sync(s)
+        return s
     }
 
     // ---------- quick actions ----------
@@ -85,10 +97,10 @@ class NoteRepository @Inject constructor(
         val updated = change(current).copy(updatedAt = System.currentTimeMillis(), dirty = true)
         noteDao.upsert(updated)
         scheduler.sync(updated)
+        syncScheduler.schedulePush()
     }
 
     // ---------- reminders ----------
-    /** Tick on the Today screen: clears a one-time reminder, or jumps a repeating one forward. */
     suspend fun completeReminder(id: String) {
         val n = noteDao.getById(id) ?: return
         val at = n.reminderAt ?: return
@@ -102,9 +114,10 @@ class NoteRepository @Inject constructor(
         )
         noteDao.upsert(updated)
         scheduler.sync(updated)
+        syncScheduler.schedulePush()
     }
 
-    /** Used after a repeating reminder fires. Does not change updatedAt. */
+    /** After a repeating reminder fires. Not an edit, so it does not trigger a sync. */
     suspend fun advanceReminder(id: String, next: Long?) {
         val n = noteDao.getById(id) ?: return
         val updated = n.copy(reminderAt = next, repeat = if (next == null) null else n.repeat)
@@ -112,7 +125,6 @@ class NoteRepository @Inject constructor(
         scheduler.sync(updated)
     }
 
-    /** After reboot / app update. */
     suspend fun rescheduleAll() {
         val now = System.currentTimeMillis()
         noteDao.getWithReminders().forEach { n ->
@@ -126,27 +138,30 @@ class NoteRepository @Inject constructor(
     }
 
     // ---------- permanent delete ----------
-    suspend fun deleteForever(id: String) {
+    /** recordTombstone = false when the deletion itself came from Drive. */
+    suspend fun deleteForever(id: String, recordTombstone: Boolean = true) {
+        val fileId = noteDao.getById(id)?.driveFileId
         db.withTransaction {
             noteDao.deleteFts(id)
             linkDao.clearFrom(id)
             noteDao.deleteForever(id)
             tagDao.deleteUnusedTags()
+            if (recordTombstone && fileId != null) {
+                syncStateDao.put(SyncStateEntity("del:$fileId", "1"))   // delete from Drive on the next sync
+            }
         }
         scheduler.cancel(id)
+        if (recordTombstone && fileId != null) syncScheduler.schedulePush()
     }
 
     suspend fun emptyTrash() {
         noteDao.getExpiredTrashIds(Long.MAX_VALUE).forEach { deleteForever(it) }
     }
 
-    /** Deletes notes that were in Trash for more than [days] days. */
     suspend fun purgeExpiredTrash(days: Long = 30) {
         val limit = System.currentTimeMillis() - days * 24 * 60 * 60 * 1000
         noteDao.getExpiredTrashIds(limit).forEach { deleteForever(it) }
     }
-
-    suspend fun findByTitle(title: String): NoteEntity? = noteDao.findByTitle(title.trim())
 
     // ---------- helpers ----------
     private val linkRegex = Regex("\\[\\[([^\\[\\]]+)\\]\\]")
@@ -162,7 +177,6 @@ class NoteRepository @Inject constructor(
             .toList()
     }
 
-    /** "hello wor" -> "hello* wor*" (prefix search, all words must match). */
     private fun toFtsQuery(raw: String): String =
         raw.trim().split(Regex("\\s+"))
             .map { it.replace(Regex("[^\\p{L}\\p{N}]"), "") }

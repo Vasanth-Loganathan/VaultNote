@@ -28,9 +28,11 @@ import javax.inject.Singleton
 data class Keyring(
     val v: Int = 1,
     val iterations: Int,
-    val salt: String,          // base64
-    val dekPass: String,       // base64 of version||iv||ct+tag, DEK wrapped by passphrase KEK
-    val dekRecovery: String    // base64, DEK wrapped by the recovery key
+    val salt: String,
+    val dekPass: String,
+    val dekRecovery: String,
+    val kcv: String = "",      // key-check value: proves two keyrings share the same DEK
+    val ts: Long = 0           // last change, used to pick the newer keyring
 )
 
 class PendingSetup(val keyring: Keyring, val dek: SecretKey, val recoveryKey: String)
@@ -41,7 +43,7 @@ class KeyringManager @Inject constructor(
 ) {
     private val file = File(ctx.filesDir, "keyring.bin")
     private val prefs = ctx.getSharedPreferences("vault_secure", Context.MODE_PRIVATE)
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val enc = Base64.getEncoder()
     private val dec = Base64.getDecoder()
 
@@ -65,7 +67,9 @@ class KeyringManager @Inject constructor(
             iterations = Kdf.DEFAULT_ITERATIONS,
             salt = enc.encodeToString(salt),
             dekPass = enc.encodeToString(AesGcm.encrypt(kek, AAD_PASSPHRASE, dekBytes)),
-            dekRecovery = enc.encodeToString(AesGcm.encrypt(recovery, AAD_RECOVERY, dekBytes))
+            dekRecovery = enc.encodeToString(AesGcm.encrypt(recovery, AAD_RECOVERY, dekBytes)),
+            kcv = enc.encodeToString(AesGcm.encrypt(SecretKeySpec(dekBytes, "AES"), AAD_KCV, KCV_TEXT)),
+            ts = System.currentTimeMillis()
         )
         val pending = PendingSetup(keyring, SecretKeySpec(dekBytes, "AES"), RecoveryKey.format(recoveryBytes))
         dekBytes.fill(0); recoveryBytes.fill(0); passphrase.fill('0')
@@ -145,9 +149,11 @@ class KeyringManager @Inject constructor(
             k.copy(
                 iterations = iterations,
                 salt = enc.encodeToString(salt),
-                dekPass = enc.encodeToString(AesGcm.encrypt(kek, AAD_PASSPHRASE, dekBytes))
+                dekPass = enc.encodeToString(AesGcm.encrypt(kek, AAD_PASSPHRASE, dekBytes)),
+                ts = System.currentTimeMillis()
             )
         )
+        setKeyringDirty(true)       // uploaded to Drive on the next sync
     }
 
     // ---------------- biometric cache of the DEK ----------------
@@ -239,5 +245,48 @@ class KeyringManager @Inject constructor(
         private const val CACHE_ALIAS = "vaultnote_dek_cache"
         private const val PREF_DEK_CACHE = "dek_cache"
         private const val AUTH_WINDOW_SECONDS = 10
+        val AAD_KCV = "vaultnotes:kcv".toByteArray()
+        private val KCV_TEXT = "vaultnotes-key-check".toByteArray()
+
     }
+
+    // ---------------- sync helpers ----------------
+    fun rawKeyring(): String? = if (file.exists()) file.readText() else null
+    fun localKeyring(): Keyring? = readKeyring()
+
+    fun parseKeyring(raw: String): Keyring? = try {
+        json.decodeFromString<Keyring>(raw)
+    } catch (e: Exception) { null }
+
+    /** Stores a keyring downloaded from Drive. */
+    fun installKeyring(raw: String): Boolean {
+        val k = parseKeyring(raw) ?: return false
+        writeKeyring(k)
+        return true
+    }
+
+    /** Keyrings created in Step 4 have no key-check value. Adds one while the DEK is in memory. */
+    fun ensureKcv() {
+        val d = dek ?: return
+        val k = readKeyring() ?: return
+        if (k.kcv.isNotEmpty()) return
+        writeKeyring(
+            k.copy(
+                kcv = enc.encodeToString(AesGcm.encrypt(d, AAD_KCV, KCV_TEXT)),
+                ts = if (k.ts == 0L) System.currentTimeMillis() else k.ts
+            )
+        )
+    }
+
+    /** True if [remote] was created with the same DEK as the one currently unlocked. */
+    fun matchesCurrentDek(remote: Keyring): Boolean {
+        val d = dek ?: return false
+        if (remote.kcv.isEmpty()) return false
+        return try {
+            AesGcm.decrypt(d, AAD_KCV, dec.decode(remote.kcv)); true
+        } catch (e: Exception) { false }
+    }
+
+    fun isKeyringDirty() = prefs.getBoolean("keyring_dirty", false)
+    fun setKeyringDirty(v: Boolean) { prefs.edit().putBoolean("keyring_dirty", v).apply() }
 }

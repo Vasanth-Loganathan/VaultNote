@@ -32,6 +32,32 @@
             app:title="Lock now" />
     </PreferenceCategory>
 
+    <PreferenceCategory app:title="Cloud sync">
+        <Preference
+            app:key="sync_account"
+            app:summary="Off. Tap to turn on"
+            app:title="Google Drive sync" />
+
+        <Preference
+            app:key="sync_now"
+            app:title="Sync now" />
+
+        <Preference
+            app:key="sync_storage"
+            app:summary="Tap to check"
+            app:title="Cloud storage used" />
+
+        <Preference
+            app:key="sync_off"
+            app:summary="Notes stay on this phone"
+            app:title="Turn off sync" />
+
+        <Preference
+            app:key="sync_delete"
+            app:summary="Removes every encrypted file this app stored in your Drive"
+            app:title="Delete all cloud data" />
+    </PreferenceCategory>
+
     <PreferenceCategory app:title="Appearance">
         <ListPreference
             app:defaultValue="system"
