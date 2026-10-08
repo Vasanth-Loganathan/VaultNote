@@ -1,4 +1,4 @@
-package com.example.vaultnote
+package com.vasanth.vaultnote
 
 import org.junit.Test
 
