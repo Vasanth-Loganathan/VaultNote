@@ -63,13 +63,17 @@ class NotesAdapter(
 
         fun bind(note: NoteEntity) {
             val ctx = itemView.context
-            b.titleText.text = note.title
-            b.titleText.isVisible = note.title.isNotBlank()
-
-            val preview = previewOf(note)
-            b.previewText.text = preview
-            b.previewText.isVisible = preview.isNotBlank()
-
+            if (note.locked) {
+                b.titleText.text = "🔒 Locked note"
+                b.titleText.isVisible = true
+                b.previewText.isVisible = false
+            } else {
+                b.titleText.text = note.title
+                b.titleText.isVisible = note.title.isNotBlank()
+                val preview = previewOf(note)
+                b.previewText.text = preview
+                b.previewText.isVisible = preview.isNotBlank()
+            }
             b.pinIcon.isVisible = note.pinned
             b.root.setCardBackgroundColor(NoteColors.card(ctx, note.color))
         }

@@ -2,8 +2,44 @@
 <navigation xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/nav_graph"
-    app:startDestination="@id/notesListFragment">
+    app:startDestination="@id/unlockFragment">
 
+    <action
+        android:id="@+id/action_global_editor"
+        app:destination="@id/noteEditorFragment" />
+    <action
+        android:id="@+id/action_global_unlock"
+        app:destination="@id/unlockFragment" />
+    <action
+        android:id="@+id/action_global_onboarding"
+        app:destination="@id/onboardingFragment" />
+
+    <!-- lock gate and first-time setup -->
+    <fragment
+        android:id="@+id/unlockFragment"
+        android:name="com.vasanth.vaultnote.ui.security.UnlockFragment" />
+
+    <fragment
+        android:id="@+id/onboardingFragment"
+        android:name="com.vasanth.vaultnote.ui.security.OnboardingFragment">
+        <action
+            android:id="@+id/action_onboarding_to_setup"
+            app:destination="@id/setupFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/setupFragment"
+        android:name="com.vasanth.vaultnote.ui.security.SetupFragment">
+        <action
+            android:id="@+id/action_setup_to_recovery"
+            app:destination="@id/recoveryKeyFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/recoveryKeyFragment"
+        android:name="com.vasanth.vaultnote.ui.security.RecoveryKeyFragment" />
+
+    <!-- app screens -->
     <fragment
         android:id="@+id/notesListFragment"
         android:name="com.vasanth.vaultnote.ui.list.NotesListFragment">
@@ -17,6 +53,12 @@
         <action
             android:id="@+id/action_list_to_list"
             app:destination="@id/notesListFragment" />
+        <action
+            android:id="@+id/action_list_to_today"
+            app:destination="@id/todayFragment" />
+        <action
+            android:id="@+id/action_list_to_settings"
+            app:destination="@id/settingsFragment" />
     </fragment>
 
     <fragment
@@ -31,5 +73,18 @@
             android:name="type"
             android:defaultValue="note"
             app:argType="string" />
+        <argument
+            android:name="title"
+            android:defaultValue="@null"
+            app:argType="string"
+            app:nullable="true" />
     </fragment>
+
+    <fragment
+        android:id="@+id/todayFragment"
+        android:name="com.vasanth.vaultnote.ui.today.TodayFragment" />
+
+    <fragment
+        android:id="@+id/settingsFragment"
+        android:name="com.vasanth.vaultnote.ui.settings.SettingsFragment" />
 </navigation>

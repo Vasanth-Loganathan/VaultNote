@@ -33,6 +33,9 @@ interface NoteDao {
     )
     fun observeByTag(tag: String): Flow<List<NoteEntity>>
 
+    @Query("SELECT * FROM notes WHERE deleted = 0 AND reminderAt IS NOT NULL")
+    suspend fun getWithReminders(): List<NoteEntity>
+
     @Query(
         """SELECT * FROM notes WHERE deleted = 0
            AND id IN (SELECT noteId FROM notes_fts WHERE notes_fts MATCH :ftsQuery)
@@ -43,7 +46,7 @@ interface NoteDao {
     @Query("SELECT * FROM notes WHERE deleted = 0 AND reminderAt IS NOT NULL ORDER BY reminderAt ASC")
     fun observeWithReminders(): Flow<List<NoteEntity>>
 
-    @Query("SELECT * FROM notes WHERE title = :title AND deleted = 0 LIMIT 1")
+    @Query("SELECT * FROM notes WHERE title = :title COLLATE NOCASE AND deleted = 0 LIMIT 1")
     suspend fun findByTitle(title: String): NoteEntity?
 
     @Query("SELECT * FROM notes WHERE dirty = 1")

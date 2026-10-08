@@ -8,31 +8,40 @@ import com.vasanth.vaultnote.data.ChecklistJson
 import com.vasanth.vaultnote.data.NoteRepository
 import com.vasanth.vaultnote.data.db.NoteEntity
 import com.vasanth.vaultnote.data.db.NoteType
+import com.vasanth.vaultnote.security.AppLockManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.UUID
 import javax.inject.Inject
 
 @HiltViewModel
 class NoteEditorViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
-    private val repo: NoteRepository
+    private val repo: NoteRepository,
+    private val appLock: AppLockManager
 ) : ViewModel() {
 
     private val argId: String? = savedStateHandle["noteId"]
     private val argType: String = savedStateHandle["type"] ?: NoteType.NOTE
 
+    private val argTitle: String? = savedStateHandle["title"]
     val isNew = argId == null
+    val noteId: String = argId ?: UUID.randomUUID().toString()
 
     /** The note being edited (always the latest in-memory version). */
-    val state = MutableStateFlow(NoteEntity(type = argType))
+    val state = MutableStateFlow(NoteEntity(id = noteId, type = argType, title = argTitle ?: ""))
     val tags = MutableStateFlow<List<String>>(emptyList())
     val loaded = MutableStateFlow(false)
+
+    /** Notes that contain a [[link]] to this note. */
+    val backlinks: Flow<List<NoteEntity>> = repo.observeBacklinks(noteId)
 
     private var existsInDb = false
     private var saveJob: Job? = null
@@ -52,6 +61,21 @@ class NoteEditorViewModel @Inject constructor(
         }
     }
 
+    // ---------- locked notes ----------
+    private var authEpoch = -1
+
+    /** True if the note is locked and the user has not authenticated since the last app lock. */
+    fun needsAuth(): Boolean = state.value.locked && authEpoch != appLock.lockEpoch
+
+    fun markAuthenticated() { authEpoch = appLock.lockEpoch }
+
+    fun toggleLocked() {
+        val nowLocked = !state.value.locked
+        state.update { it.copy(locked = nowLocked) }
+        if (nowLocked) markAuthenticated()
+        scheduleSave()
+    }
+
     // ---------- edits ----------
     fun updateContent(title: String, body: String, items: List<CheckItem>?) {
         state.update {
@@ -67,6 +91,11 @@ class NoteEditorViewModel @Inject constructor(
     fun togglePinned() { state.update { it.copy(pinned = !it.pinned) }; scheduleSave() }
     fun toggleArchived() { state.update { it.copy(archived = !it.archived) }; scheduleSave() }
     fun setColor(color: String) { state.update { it.copy(color = color) }; scheduleSave() }
+
+    fun setReminder(at: Long?, repeat: String?) {
+        state.update { it.copy(reminderAt = at, repeat = if (at == null) null else repeat) }
+        scheduleSave()
+    }
 
     fun addTag(raw: String) {
         val t = raw.trim().lowercase()
@@ -88,6 +117,8 @@ class NoteEditorViewModel @Inject constructor(
         viewModelScope.launch { saveNow() }
     }
 
+    suspend fun findNoteByTitle(title: String): NoteEntity? = repo.findByTitle(title)
+
     // ---------- saving ----------
     private fun scheduleSave() {
         saveJob?.cancel()
@@ -106,7 +137,8 @@ class NoteEditorViewModel @Inject constructor(
     private suspend fun saveNow() {
         val n = state.value
         val checklistEmpty = ChecklistJson.decode(n.itemsJson).all { it.text.isBlank() }
-        val isEmpty = n.title.isBlank() && n.body.isBlank() && checklistEmpty && tags.value.isEmpty()
+        val isEmpty = n.title.isBlank() && n.body.isBlank() && checklistEmpty &&
+                tags.value.isEmpty() && n.reminderAt == null
         if (isEmpty && !existsInDb) return
 
         withContext(NonCancellable) {

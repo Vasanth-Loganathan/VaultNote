@@ -67,4 +67,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
 
     implementation("androidx.preference:preference-ktx:1.2.1")
+    implementation("androidx.biometric:biometric:1.1.0")
+    implementation("androidx.lifecycle:lifecycle-process:2.9.2")
+    implementation("net.zetetic:sqlcipher-android:4.9.0@aar")
+    implementation("androidx.sqlite:sqlite:2.5.2")
 }

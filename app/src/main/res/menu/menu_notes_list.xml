@@ -10,6 +10,12 @@
         app:showAsAction="ifRoom|collapseActionView" />
 
     <item
+        android:id="@+id/action_today"
+        android:icon="@drawable/ic_event"
+        android:title="Today &amp; upcoming"
+        app:showAsAction="ifRoom" />
+
+    <item
         android:id="@+id/action_view_toggle"
         android:icon="@drawable/ic_view_agenda"
         android:title="Grid / list"
@@ -23,6 +29,11 @@
     <item
         android:id="@+id/action_trash"
         android:title="Trash"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_settings"
+        android:title="Settings"
         app:showAsAction="never" />
 
     <item

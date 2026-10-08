@@ -66,6 +66,8 @@ class NotesListFragment : Fragment(R.layout.fragment_notes_list) {
         menu.findItem(R.id.action_archive).isVisible = mode == ListMode.ACTIVE
         menu.findItem(R.id.action_trash).isVisible = mode == ListMode.ACTIVE
         menu.findItem(R.id.action_empty_trash).isVisible = mode == ListMode.TRASH
+        menu.findItem(R.id.action_today).isVisible = mode == ListMode.ACTIVE
+        menu.findItem(R.id.action_settings).isVisible = mode == ListMode.ACTIVE
         applyGrid(menu.findItem(R.id.action_view_toggle))
 
         val searchView = searchItem.actionView as SearchView
@@ -93,6 +95,8 @@ class NotesListFragment : Fragment(R.layout.fragment_notes_list) {
                 R.id.action_archive -> { openList(ListMode.ARCHIVE); true }
                 R.id.action_trash -> { openList(ListMode.TRASH); true }
                 R.id.action_empty_trash -> { confirmEmptyTrash(); true }
+                R.id.action_today -> { findNavController().navigate(R.id.action_list_to_today); true }
+                R.id.action_settings -> { findNavController().navigate(R.id.action_list_to_settings); true }
                 else -> false
             }
         }

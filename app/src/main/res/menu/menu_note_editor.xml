@@ -9,6 +9,12 @@
         app:showAsAction="always" />
 
     <item
+        android:id="@+id/action_lock"
+        android:icon="@drawable/ic_lock"
+        android:title="Lock note"
+        app:showAsAction="always" />
+
+    <item
         android:id="@+id/action_archive"
         android:icon="@drawable/ic_archive"
         android:title="Archive"
@@ -19,4 +25,9 @@
         android:icon="@drawable/ic_delete"
         android:title="Delete"
         app:showAsAction="always" />
+
+    <item
+        android:id="@+id/action_copy"
+        android:title="Copy text"
+        app:showAsAction="never" />
 </menu>

@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <PreferenceCategory app:title="Security">
+        <ListPreference
+            app:defaultValue="30"
+            app:entries="@array/lock_entries"
+            app:entryValues="@array/lock_values"
+            app:key="auto_lock"
+            app:title="Auto-lock"
+            app:useSimpleSummaryProvider="true" />
+
+        <SwitchPreferenceCompat
+            app:key="biometric_unlock"
+            app:persistent="false"
+            app:summary="Use fingerprint, face or phone lock instead of typing the passphrase"
+            app:title="Unlock with biometrics" />
+
+        <SwitchPreferenceCompat
+            app:defaultValue="true"
+            app:key="secure_screen"
+            app:summary="Blocks screenshots and hides the app in recent apps"
+            app:title="Block screenshots" />
+
+        <Preference
+            app:key="change_passphrase"
+            app:summary="Your notes are not re-encrypted, only the key wrapper changes"
+            app:title="Change passphrase" />
+
+        <Preference
+            app:key="lock_now"
+            app:title="Lock now" />
+    </PreferenceCategory>
+
+    <PreferenceCategory app:title="Appearance">
+        <ListPreference
+            app:defaultValue="system"
+            app:entries="@array/theme_entries"
+            app:entryValues="@array/theme_values"
+            app:key="theme"
+            app:title="Theme"
+            app:useSimpleSummaryProvider="true" />
+
+        <SwitchPreferenceCompat
+            app:defaultValue="true"
+            app:key="dynamic_color"
+            app:summary="Use wallpaper colors on Android 12+. Restart the app to apply."
+            app:title="Dynamic colors" />
+    </PreferenceCategory>
+
+    <PreferenceCategory app:title="Reminders">
+        <Preference
+            app:key="notif_settings"
+            app:summary="Allow or change reminder notifications"
+            app:title="Notification settings" />
+    </PreferenceCategory>
+
+    <PreferenceCategory app:title="About">
+        <Preference
+            app:selectable="false"
+            app:summary="Version 1.0 · notes are encrypted on this device"
+            app:title="VaultNote" />
+    </PreferenceCategory>
+</PreferenceScreen>
