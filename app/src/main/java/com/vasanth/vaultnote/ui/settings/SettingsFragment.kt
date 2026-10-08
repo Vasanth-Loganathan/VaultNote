@@ -116,8 +116,10 @@ class SettingsPrefsFragment : PreferenceFragmentCompat() {
         }
         findPreference<Preference>("sync_now")?.setOnPreferenceClickListener { runSyncNow(); true }
         findPreference<Preference>("sync_storage")?.setOnPreferenceClickListener { checkStorage(); true }
-        findPreference<Preference>("sync_off")?.setOnPreferenceClickListener { confirmTurnOff(); true }
-        findPreference<Preference>("sync_delete")?.setOnPreferenceClickListener { confirmDeleteCloud(); true }
+        findPreference<Preference>("sync_off")?.setOnPreferenceClickListener {
+            SignOutDialog.show(this, sync) { if (isAdded && view != null) refreshSyncUi() }
+            true
+        }
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -143,7 +145,7 @@ class SettingsPrefsFragment : PreferenceFragmentCompat() {
             st.error != null -> st.error
             else -> "On · ${sync.email.orEmpty()}$synced"
         }
-        listOf("sync_now", "sync_storage", "sync_off", "sync_delete").forEach {
+        listOf("sync_now", "sync_storage", "sync_off").forEach {
             findPreference<Preference>(it)?.isVisible = on
         }
     }
@@ -211,39 +213,6 @@ class SettingsPrefsFragment : PreferenceFragmentCompat() {
             pref?.summary = "$app in ${info.fileCount} files · Google account: $used of $limit" +
                     if (almostFull) "\nYour Google storage is almost full" else ""
         }
-    }
-
-    private fun confirmTurnOff() {
-        MaterialAlertDialogBuilder(requireContext())
-            .setTitle("Turn off sync?")
-            .setMessage("Your notes stay on this phone. Cloud copies stay in Drive until you delete them.")
-            .setPositiveButton("Turn off") { _, _ ->
-                viewLifecycleOwner.lifecycleScope.launch { sync.disable(); refreshSyncUi() }
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
-    private fun confirmDeleteCloud() {
-        MaterialAlertDialogBuilder(requireContext())
-            .setTitle("Delete all cloud data?")
-            .setMessage(
-                "Every encrypted file VaultNote stored in your Drive will be deleted, including your keyring. " +
-                        "Notes on this phone are kept and sync turns off."
-            )
-            .setPositiveButton("Delete") { _, _ ->
-                viewLifecycleOwner.lifecycleScope.launch {
-                    try {
-                        val n = sync.deleteAllCloudData()
-                        toast("Deleted $n cloud files. Sync is off")
-                    } catch (e: Exception) {
-                        toast("Could not delete: ${e.message}")
-                    }
-                    refreshSyncUi()
-                }
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
     }
 
     // ---------- passphrase ----------

@@ -49,8 +49,8 @@
 
         <Preference
             app:key="sync_off"
-            app:summary="Notes stay on this phone"
-            app:title="Turn off sync" />
+            app:title="Sign out of Google"
+            app:summary="Switch account or erase data" />
 
         <Preference
             app:key="sync_delete"

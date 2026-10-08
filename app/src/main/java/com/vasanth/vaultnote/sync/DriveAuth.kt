@@ -10,6 +10,8 @@ import com.google.android.gms.auth.api.identity.Identity
 import com.google.android.gms.common.api.Scope
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
+import android.accounts.Account
+import com.google.android.gms.auth.api.identity.RevokeAccessRequest
 
 object DriveAuth {
     private val SCOPE = Scope("https://www.googleapis.com/auth/drive.appdata")
@@ -24,6 +26,20 @@ object DriveAuth {
                 if (cont.isActive) cont.resume(if (r.hasResolution()) null else r.accessToken)
             }
             .addOnFailureListener { if (cont.isActive) cont.resume(null) }
+    }
+
+    /** Removes this app's Drive consent for the account, so the next sign-in shows the account picker. */
+    suspend fun revoke(ctx: Context, email: String?): Boolean {
+        if (email.isNullOrBlank()) return false
+        val req = RevokeAccessRequest.builder()
+            .setAccount(Account(email, "com.google"))
+            .setScopes(listOf(SCOPE))
+            .build()
+        return suspendCancellableCoroutine { cont ->
+            Identity.getAuthorizationClient(ctx).revokeAccess(req)
+                .addOnSuccessListener { if (cont.isActive) cont.resume(true) }
+                .addOnFailureListener { if (cont.isActive) cont.resume(false) }
+        }
     }
 }
 

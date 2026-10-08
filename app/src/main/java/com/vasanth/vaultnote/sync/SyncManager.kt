@@ -389,6 +389,18 @@ class SyncManager @Inject constructor(
         _status.value = SyncStatus()
     }
 
+    /**
+     * Signs out of Google. If deleteCloud is true, every Drive file is deleted first
+     * (throws on failure, and then nothing changes). Local notes are always kept here.
+     */
+    suspend fun signOut(deleteCloud: Boolean) {
+        val account = prefs.email
+        if (deleteCloud) deleteAllCloudData() else disable()
+        withContext(Dispatchers.IO) { noteDao.clearAllDriveInfo() }   // notes upload fresh to the next account
+        cachedToken = null
+        DriveAuth.revoke(ctx, account)
+    }
+
     /** Deletes every file this app stored in Drive, then turns sync off. Notes stay on this phone. */
     suspend fun deleteAllCloudData(): Int {
         val count = withContext(Dispatchers.IO) {
