@@ -59,6 +59,9 @@
         <action
             android:id="@+id/action_list_to_settings"
             app:destination="@id/settingsFragment" />
+        <action
+            android:id="@+id/action_list_to_board"
+            app:destination="@id/boardFragment" />
     </fragment>
 
     <fragment
@@ -87,4 +90,13 @@
     <fragment
         android:id="@+id/settingsFragment"
         android:name="com.vasanth.vaultnote.ui.settings.SettingsFragment" />
+
+    <fragment
+        android:id="@+id/boardFragment"
+        android:name="com.vasanth.vaultnote.ui.board.BoardFragment">
+        <argument
+            android:name="boardId"
+            app:argType="string" />
+    </fragment>
+
 </navigation>

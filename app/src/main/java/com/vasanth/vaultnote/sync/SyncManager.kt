@@ -239,7 +239,10 @@ class SyncManager @Inject constructor(
                 itemsJson = src.itemsJson,
                 color = src.color,
                 archived = src.archived,
-                locked = src.locked
+                locked = src.locked,
+                boardId = src.boardId,
+                columnId = src.columnId,
+                boardPos = src.boardPos + 1
             ),
             tags
         )

@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vasanth.vaultnote.data.NoteRepository
 import com.vasanth.vaultnote.data.db.NoteEntity
+import com.vasanth.vaultnote.data.BoardOps
+import com.vasanth.vaultnote.data.db.NoteDao
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,7 +28,9 @@ object ListMode {
 @HiltViewModel
 class NotesListViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
-    private val repo: NoteRepository
+    private val repo: NoteRepository,
+    private val noteDao: NoteDao,
+    private val boards: BoardOps
 ) : ViewModel() {
 
     val mode: String = savedStateHandle["mode"] ?: ListMode.ACTIVE
@@ -75,8 +79,10 @@ class NotesListViewModel @Inject constructor(
 
     fun setPinned(id: String, pinned: Boolean) = viewModelScope.launch { repo.setPinned(id, pinned) }
     fun setArchived(id: String, archived: Boolean) = viewModelScope.launch { repo.setArchived(id, archived) }
-    fun moveToTrash(id: String) = viewModelScope.launch { repo.moveToTrash(id) }
-    fun restore(id: String) = viewModelScope.launch { repo.restore(id) }
-    fun deleteForever(id: String) = viewModelScope.launch { repo.deleteForever(id) }
+    fun moveToTrash(id: String) = viewModelScope.launch { noteDao.getById(id)?.let { boards.trash(it) } }
+    fun restore(id: String) = viewModelScope.launch { noteDao.getById(id)?.let { boards.restore(it) } }
+    fun deleteForever(id: String) = viewModelScope.launch { noteDao.getById(id)?.let { boards.deleteForever(it) } }
+    fun createBoard(title: String, onCreated: (String) -> Unit) =
+        viewModelScope.launch { onCreated(boards.createBoard(title)) }
     fun emptyTrash() = viewModelScope.launch { repo.emptyTrash() }
 }

@@ -11,11 +11,12 @@ import java.util.UUID
 object NoteType {
     const val NOTE = "note"
     const val CHECKLIST = "checklist"
+    const val BOARD = "board"
 }
 
 @Entity(
     tableName = "notes",
-    indices = [Index("updatedAt"), Index("deleted", "archived")]
+    indices = [Index("updatedAt"), Index("deleted", "archived"), Index("boardId")]
 )
 data class NoteEntity(
     @PrimaryKey val id: String = UUID.randomUUID().toString(),
@@ -36,7 +37,10 @@ data class NoteEntity(
     val dirty: Boolean = true,           // needs upload to Drive
     val syncedAt: Long? = null,
     val driveFileId: String? = null,
-    val remoteModifiedTime: Long? = null
+    val remoteModifiedTime: Long? = null,
+    val boardId: String? = null,         // set on cards: the board (a note of type "board") they live in
+    val columnId: String? = null,
+    @ColumnInfo(defaultValue = "0") val boardPos: Long = 0
 )
 
 @Entity(tableName = "tags")

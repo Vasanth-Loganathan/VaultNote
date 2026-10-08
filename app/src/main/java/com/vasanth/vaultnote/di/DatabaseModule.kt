@@ -26,6 +26,7 @@ object DatabaseModule {
         val factory = SupportOpenHelperFactory(keys.getOrCreateDbKey())
         return Room.databaseBuilder(ctx, VaultDatabase::class.java, DbKeyProvider.DB_NAME)
             .openHelperFactory(factory)
+            .addMigrations(MIGRATION_1_2)
             .build()
     }
 

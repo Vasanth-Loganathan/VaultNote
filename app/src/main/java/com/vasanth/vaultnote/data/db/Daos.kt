@@ -17,21 +17,34 @@ interface NoteDao {
     @Query("SELECT * FROM notes WHERE id = :id")
     fun observeById(id: String): Flow<NoteEntity?>
 
-    @Query("SELECT * FROM notes WHERE deleted = 0 AND archived = 0 ORDER BY pinned DESC, updatedAt DESC")
-    fun observeActive(): Flow<List<NoteEntity>>
+    @Query(
+        """SELECT * FROM notes WHERE deleted = 0 AND archived = 0
+           AND (boardId IS NULL OR boardId NOT IN (SELECT id FROM notes))
+           ORDER BY pinned DESC, updatedAt DESC"""
+    )    fun observeActive(): Flow<List<NoteEntity>>
 
-    @Query("SELECT * FROM notes WHERE deleted = 0 AND archived = 1 ORDER BY updatedAt DESC")
+    @Query("SELECT * FROM notes WHERE deleted = 0 AND archived = 1 AND boardId IS NULL ORDER BY updatedAt DESC")
     fun observeArchived(): Flow<List<NoteEntity>>
 
-    @Query("SELECT * FROM notes WHERE deleted = 1 ORDER BY deletedAt DESC")
+    @Query(
+        """SELECT * FROM notes WHERE deleted = 1
+           AND (boardId IS NULL OR boardId NOT IN (SELECT id FROM notes WHERE deleted = 1))
+           ORDER BY deletedAt DESC"""
+    )
     fun observeTrash(): Flow<List<NoteEntity>>
 
     @Query(
         """SELECT n.* FROM notes n INNER JOIN note_tag t ON t.noteId = n.id
-           WHERE t.tagName = :tag AND n.deleted = 0 AND n.archived = 0
+           WHERE t.tagName = :tag AND n.deleted = 0 AND n.archived = 0 AND n.boardId IS NULL
            ORDER BY n.pinned DESC, n.updatedAt DESC"""
     )
     fun observeByTag(tag: String): Flow<List<NoteEntity>>
+
+    @Query("SELECT * FROM notes WHERE boardId = :boardId AND deleted = 0 ORDER BY boardPos ASC, createdAt ASC")
+    fun observeCards(boardId: String): Flow<List<NoteEntity>>
+
+    @Query("SELECT * FROM notes WHERE boardId = :boardId")
+    suspend fun getCardsOfBoard(boardId: String): List<NoteEntity>
 
     @Query("SELECT * FROM notes WHERE deleted = 0 AND reminderAt IS NOT NULL")
     suspend fun getWithReminders(): List<NoteEntity>

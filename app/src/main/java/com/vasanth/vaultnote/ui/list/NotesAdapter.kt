@@ -14,6 +14,7 @@ import com.vasanth.vaultnote.data.db.NoteType
 import com.vasanth.vaultnote.databinding.ItemHeaderBinding
 import com.vasanth.vaultnote.databinding.ItemNoteBinding
 import com.vasanth.vaultnote.util.NoteColors
+import com.vasanth.vaultnote.data.BoardJson
 
 sealed interface ListItem {
     data class Header(val title: String) : ListItem
@@ -80,6 +81,8 @@ class NotesAdapter(
     }
 
     private fun previewOf(note: NoteEntity): String {
+        if (note.type == NoteType.BOARD)
+            return "▦ " + BoardJson.decode(note.itemsJson).joinToString(" · ") { it.name }
         if (note.type != NoteType.CHECKLIST) return note.body.take(300)
         val items = ChecklistJson.decode(note.itemsJson).filter { it.text.isNotBlank() }
         val lines = items.take(6).map { (if (it.done) "☑ " else "☐ ") + it.text }

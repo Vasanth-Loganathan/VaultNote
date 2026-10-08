@@ -22,6 +22,7 @@ import com.vasanth.vaultnote.R
 import com.vasanth.vaultnote.data.db.NoteEntity
 import com.vasanth.vaultnote.data.db.NoteType
 import com.vasanth.vaultnote.databinding.FragmentNotesListBinding
+import com.vasanth.vaultnote.util.TextPrompt
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 
@@ -107,8 +108,15 @@ class NotesListFragment : Fragment(R.layout.fragment_notes_list) {
             val popup = PopupMenu(requireContext(), v)
             popup.menu.add(0, 1, 0, "New note")
             popup.menu.add(0, 2, 1, "New checklist")
+            popup.menu.add(0, 3, 2, "New board")
             popup.setOnMenuItemClickListener {
-                openEditor(null, if (it.itemId == 1) NoteType.NOTE else NoteType.CHECKLIST)
+                when (it.itemId) {
+                    1 -> openEditor(null, NoteType.NOTE)
+                    2 -> openEditor(null, NoteType.CHECKLIST)
+                    else -> TextPrompt.show(requireContext(), "New board", "Board name", positive = "Create") { name ->
+                        vm.createBoard(name) { id -> if (isAdded && view != null) openBoard(id) }
+                    }
+                }
                 true
             }
             popup.show()
@@ -161,11 +169,14 @@ class NotesListFragment : Fragment(R.layout.fragment_notes_list) {
             R.id.action_list_to_editor, bundleOf("noteId" to noteId, "type" to type)
         )
 
+    private fun openBoard(id: String) =
+        findNavController().navigate(R.id.action_list_to_board, bundleOf("boardId" to id))
+
     private fun onNoteClick(note: NoteEntity) {
-        if (vm.mode == ListMode.TRASH) {
-            view?.let { showNoteMenu(it, note) }
-        } else {
-            openEditor(note.id, note.type)
+        when {
+            vm.mode == ListMode.TRASH -> view?.let { showNoteMenu(it, note) }
+            note.type == NoteType.BOARD -> openBoard(note.id)
+            else -> openEditor(note.id, note.type)
         }
     }
 
