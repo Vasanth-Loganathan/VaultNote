@@ -65,4 +65,6 @@ dependencies {
 
     // JSON (checklist items now, Drive payload later)
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+
+    implementation("androidx.preference:preference-ktx:1.2.1")
 }

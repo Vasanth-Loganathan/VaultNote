@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/nav_graph"
+    app:startDestination="@id/notesListFragment">
+
+    <fragment
+        android:id="@+id/notesListFragment"
+        android:name="com.vasanth.vaultnote.ui.list.NotesListFragment">
+        <argument
+            android:name="mode"
+            android:defaultValue="active"
+            app:argType="string" />
+        <action
+            android:id="@+id/action_list_to_editor"
+            app:destination="@id/noteEditorFragment" />
+        <action
+            android:id="@+id/action_list_to_list"
+            app:destination="@id/notesListFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/noteEditorFragment"
+        android:name="com.vasanth.vaultnote.ui.editor.NoteEditorFragment">
+        <argument
+            android:name="noteId"
+            android:defaultValue="@null"
+            app:argType="string"
+            app:nullable="true" />
+        <argument
+            android:name="type"
+            android:defaultValue="note"
+            app:argType="string" />
+    </fragment>
+</navigation>

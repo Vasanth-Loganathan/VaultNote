@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="note_red">#5C2B29</color>
+    <color name="note_orange">#614A19</color>
+    <color name="note_yellow">#635D19</color>
+    <color name="note_green">#345920</color>
+    <color name="note_teal">#16504B</color>
+    <color name="note_blue">#2D555E</color>
+    <color name="note_purple">#42275E</color>
+    <color name="note_pink">#5B2245</color>
+</resources>

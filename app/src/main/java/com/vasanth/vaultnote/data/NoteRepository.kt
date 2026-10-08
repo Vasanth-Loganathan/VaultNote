@@ -5,6 +5,7 @@ import com.vasanth.vaultnote.data.db.LinkDao
 import com.vasanth.vaultnote.data.db.NoteDao
 import com.vasanth.vaultnote.data.db.NoteEntity
 import com.vasanth.vaultnote.data.db.NoteTagCrossRef
+import com.vasanth.vaultnote.data.db.NoteType
 import com.vasanth.vaultnote.data.db.TagDao
 import com.vasanth.vaultnote.data.db.TagEntity
 import com.vasanth.vaultnote.data.db.VaultDatabase
@@ -45,7 +46,10 @@ class NoteRepository @Inject constructor(
             noteDao.upsert(saved)
 
             noteDao.deleteFts(saved.id)
-            noteDao.insertFts(saved.id, saved.title, saved.body)
+            val indexBody = if (saved.type == NoteType.CHECKLIST)
+                ChecklistJson.decode(saved.itemsJson).joinToString(" ") { it.text }
+            else saved.body
+            noteDao.insertFts(saved.id, saved.title, indexBody)
 
             tagDao.clearRefs(saved.id)
             tags.map { it.trim().lowercase() }
