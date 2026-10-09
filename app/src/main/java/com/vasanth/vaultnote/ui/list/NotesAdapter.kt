@@ -1,5 +1,7 @@
 package com.vasanth.vaultnote.ui.list
 
+import android.content.res.ColorStateList
+import android.graphics.Color
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -8,13 +10,14 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.StaggeredGridLayoutManager
+import com.google.android.material.color.MaterialColors
+import com.vasanth.vaultnote.data.BoardJson
 import com.vasanth.vaultnote.data.ChecklistJson
 import com.vasanth.vaultnote.data.db.NoteEntity
 import com.vasanth.vaultnote.data.db.NoteType
 import com.vasanth.vaultnote.databinding.ItemHeaderBinding
 import com.vasanth.vaultnote.databinding.ItemNoteBinding
 import com.vasanth.vaultnote.util.NoteColors
-import com.vasanth.vaultnote.data.BoardJson
 
 sealed interface ListItem {
     data class Header(val title: String) : ListItem
@@ -25,6 +28,14 @@ class NotesAdapter(
     private val onClick: (NoteEntity) -> Unit,
     private val onLongClick: (View, NoteEntity) -> Unit
 ) : ListAdapter<ListItem, RecyclerView.ViewHolder>(DIFF) {
+
+    private var selected: Set<String> = emptySet()
+
+    fun setSelection(ids: Set<String>) {
+        if (ids == selected) return
+        selected = ids
+        notifyItemRangeChanged(0, itemCount)
+    }
 
     override fun getItemViewType(position: Int) =
         if (getItem(position) is ListItem.Header) TYPE_HEADER else TYPE_NOTE
@@ -50,6 +61,9 @@ class NotesAdapter(
     }
 
     inner class NoteVH(private val b: ItemNoteBinding) : RecyclerView.ViewHolder(b.root) {
+        private val baseStrokeWidth = b.root.strokeWidth
+        private val baseStrokeColors: ColorStateList? = b.root.strokeColorStateList
+
         init {
             b.root.setOnClickListener {
                 val pos = bindingAdapterPosition
@@ -64,12 +78,15 @@ class NotesAdapter(
 
         fun bind(note: NoteEntity) {
             val ctx = itemView.context
+            val sel = note.id in selected
+            val prefix = if (sel) "✓ " else ""
+
             if (note.locked) {
-                b.titleText.text = "🔒 Locked note"
+                b.titleText.text = prefix + "🔒 Locked note"
                 b.titleText.isVisible = true
                 b.previewText.isVisible = false
             } else {
-                b.titleText.text = note.title
+                b.titleText.text = prefix + note.title
                 b.titleText.isVisible = note.title.isNotBlank()
                 val preview = previewOf(note)
                 b.previewText.text = preview
@@ -77,6 +94,14 @@ class NotesAdapter(
             }
             b.pinIcon.isVisible = note.pinned
             b.root.setCardBackgroundColor(NoteColors.card(ctx, note.color))
+
+            if (sel) {
+                b.root.strokeWidth = (3 * ctx.resources.displayMetrics.density).toInt()
+                b.root.strokeColor = MaterialColors.getColor(ctx, com.google.android.material.R.attr.colorPrimary, Color.BLUE)
+            } else {
+                b.root.strokeWidth = baseStrokeWidth
+                b.root.setStrokeColor(baseStrokeColors ?: ColorStateList.valueOf(Color.TRANSPARENT))
+            }
         }
     }
 

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item
+        android:id="@+id/action_sel_archive"
+        android:icon="@drawable/ic_sel_archive"
+        android:title="Archive"
+        app:showAsAction="ifRoom" />
+    <item
+        android:id="@+id/action_sel_color"
+        android:icon="@drawable/ic_palette"
+        android:title="Color"
+        app:showAsAction="ifRoom" />
+    <item
+        android:id="@+id/action_sel_trash"
+        android:icon="@drawable/ic_sel_delete"
+        android:title="Move to trash"
+        app:showAsAction="ifRoom" />
+    <item
+        android:id="@+id/action_sel_restore"
+        android:title="Restore"
+        app:showAsAction="ifRoom|withText" />
+    <item
+        android:id="@+id/action_sel_delete_forever"
+        android:icon="@drawable/ic_sel_delete"
+        android:title="Delete forever"
+        app:showAsAction="ifRoom" />
+    <item
+        android:id="@+id/action_sel_pin"
+        android:title="Pin"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_sel_all"
+        android:title="Select all"
+        app:showAsAction="never" />
+</menu>

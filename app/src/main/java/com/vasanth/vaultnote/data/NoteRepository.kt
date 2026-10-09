@@ -17,7 +17,8 @@ class NoteRepository @Inject constructor(
     private val linkDao: LinkDao,
     private val syncStateDao: SyncStateDao,
     private val scheduler: ReminderScheduler,
-    private val syncScheduler: SyncScheduler
+    private val syncScheduler: SyncScheduler,
+    private val attachments: AttachmentStore
 ) {
     // ---------- observe ----------
     fun observeActive(): Flow<List<NoteEntity>> = noteDao.observeActive()
@@ -156,11 +157,13 @@ class NoteRepository @Inject constructor(
 
     suspend fun emptyTrash() {
         noteDao.getExpiredTrashIds(Long.MAX_VALUE).forEach { deleteForever(it) }
+        attachments.gc()
     }
 
     suspend fun purgeExpiredTrash(days: Long = 30) {
         val limit = System.currentTimeMillis() - days * 24 * 60 * 60 * 1000
         noteDao.getExpiredTrashIds(limit).forEach { deleteForever(it) }
+        attachments.gc()
     }
 
     // ---------- helpers ----------

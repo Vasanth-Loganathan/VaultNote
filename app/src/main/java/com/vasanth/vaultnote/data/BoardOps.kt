@@ -17,7 +17,7 @@ class BoardOps @Inject constructor(
     suspend fun createBoard(title: String): String {
         val b = NoteEntity(
             type = NoteType.BOARD, title = title,
-            itemsJson = BoardJson.encode(BoardJson.defaultColumns())
+            itemsJson = BoardJson.encode(emptyList())
         )
         repo.saveNote(b, emptyList())
         return b.id
@@ -28,9 +28,9 @@ class BoardOps @Inject constructor(
 
     suspend fun saveCard(card: NoteEntity) = repo.saveNote(card, tagDao.tagsForNote(card.id))
 
-    suspend fun addCard(boardId: String, columnId: String, title: String, pos: Long) =
+    suspend fun addCard(boardId: String, columnId: String, title: String, pos: Long, type: String) =
         repo.saveNote(
-            NoteEntity(type = NoteType.NOTE, title = title, boardId = boardId, columnId = columnId, boardPos = pos),
+            NoteEntity(type = type, title = title, boardId = boardId, columnId = columnId, boardPos = pos),
             emptyList()
         )
 

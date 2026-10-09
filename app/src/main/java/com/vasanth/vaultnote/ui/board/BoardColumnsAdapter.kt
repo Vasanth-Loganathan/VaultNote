@@ -4,10 +4,10 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.DiffUtil
-import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.color.MaterialColors
 import com.vasanth.vaultnote.data.db.NoteEntity
 import com.vasanth.vaultnote.databinding.ItemBoardColumnBinding
 
@@ -16,7 +16,7 @@ class BoardColumnsAdapter(
     private val onColumnMenu: (View, ColumnUi, Int) -> Unit,
     private val onCardClick: (NoteEntity) -> Unit,
     private val onCardMenu: (View, NoteEntity) -> Unit,
-    private val onReorder: (String, List<String>) -> Unit
+    private val onCardDrag: (View, NoteEntity) -> Unit
 ) : ListAdapter<ColumnUi, BoardColumnsAdapter.VH>(DIFF) {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
@@ -33,33 +33,14 @@ class BoardColumnsAdapter(
 
     inner class VH(private val b: ItemBoardColumnBinding) : RecyclerView.ViewHolder(b.root) {
         private var data: ColumnUi? = null
-        private val cards = BoardCardsAdapter(onCardClick, onCardMenu)
+        private val cards = BoardCardsAdapter(onCardClick, onCardMenu, onCardDrag)
+
+        val columnId: String? get() = data?.column?.id
+        val cardsRecycler: RecyclerView get() = b.cardsRecycler
 
         init {
             b.cardsRecycler.layoutManager = LinearLayoutManager(b.root.context)
             b.cardsRecycler.adapter = cards
-            b.cardsRecycler.itemAnimator = null
-            ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(
-                ItemTouchHelper.UP or ItemTouchHelper.DOWN, 0
-            ) {
-                override fun onMove(
-                    rv: RecyclerView, vh: RecyclerView.ViewHolder, target: RecyclerView.ViewHolder
-                ) = cards.move(vh.bindingAdapterPosition, target.bindingAdapterPosition)
-
-                override fun onSwiped(vh: RecyclerView.ViewHolder, direction: Int) {}
-
-                override fun onSelectedChanged(vh: RecyclerView.ViewHolder?, state: Int) {
-                    super.onSelectedChanged(vh, state)
-                    if (state == ItemTouchHelper.ACTION_STATE_DRAG) cards.dragging = true
-                }
-
-                override fun clearView(rv: RecyclerView, vh: RecyclerView.ViewHolder) {
-                    super.clearView(rv, vh)
-                    cards.dragging = false
-                    data?.let { onReorder(it.column.id, cards.ids()) }
-                }
-            }).attachToRecyclerView(b.cardsRecycler)
-
             b.addCardButton.setOnClickListener { data?.let(onAddCard) }
             b.columnMenu.setOnClickListener { v ->
                 data?.let { onColumnMenu(v, it, bindingAdapterPosition) }
@@ -68,8 +49,17 @@ class BoardColumnsAdapter(
 
         fun bind(c: ColumnUi) {
             data = c
-            b.columnTitle.text = "${c.column.name} · ${c.cards.size}"
-            cards.submit(c.cards)
+            b.columnTitle.text = c.column.name
+            cards.submitList(c.cards)
+            setHighlight(false)
+        }
+
+        /** Outline shown while a card is dragged over this column. */
+        fun setHighlight(on: Boolean) {
+            val card = b.root
+            card.strokeWidth = if (on) (2 * card.resources.displayMetrics.density).toInt() else 0
+            if (on) card.strokeColor =
+                MaterialColors.getColor(card, com.google.android.material.R.attr.colorPrimary)
         }
     }
 

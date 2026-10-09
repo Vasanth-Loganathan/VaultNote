@@ -19,7 +19,7 @@
         android:id="@+id/action_view_toggle"
         android:icon="@drawable/ic_view_agenda"
         android:title="Grid / list"
-        app:showAsAction="ifRoom" />
+        app:showAsAction="always" />
 
     <item
         android:id="@+id/action_archive"

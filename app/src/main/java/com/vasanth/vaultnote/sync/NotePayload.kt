@@ -1,5 +1,7 @@
 package com.vasanth.vaultnote.sync
 
+import com.vasanth.vaultnote.data.Attachment
+import com.vasanth.vaultnote.data.AttachmentJson
 import com.vasanth.vaultnote.data.BoardColumn
 import com.vasanth.vaultnote.data.BoardJson
 import com.vasanth.vaultnote.data.CheckItem
@@ -26,11 +28,11 @@ data class NotePayload(
     val updatedAt: Long = 0,
     val trashed: Boolean = false,
     val trashedAt: Long? = null,
-    // boards (type "board" has columns; cards carry boardId, columnId, boardPos)
     val columns: List<BoardColumn> = emptyList(),
     val boardId: String? = null,
     val columnId: String? = null,
-    val boardPos: Long = 0
+    val boardPos: Long = 0,
+    val attachments: List<Attachment> = emptyList()
 ) {
     fun toEntity(id: String, fileId: String, remoteTime: Long) = NoteEntity(
         id = id, type = type, title = title, body = body,
@@ -41,7 +43,8 @@ data class NotePayload(
         deleted = trashed, deletedAt = trashedAt,
         dirty = false, syncedAt = System.currentTimeMillis(),
         driveFileId = fileId, remoteModifiedTime = remoteTime,
-        boardId = boardId, columnId = columnId, boardPos = boardPos
+        boardId = boardId, columnId = columnId, boardPos = boardPos,
+        attachmentsJson = AttachmentJson.encode(attachments)
     )
 
     companion object {
@@ -55,7 +58,8 @@ data class NotePayload(
                 createdAt = n.createdAt, updatedAt = n.updatedAt,
                 trashed = n.deleted, trashedAt = n.deletedAt,
                 columns = if (isBoard) BoardJson.decode(n.itemsJson) else emptyList(),
-                boardId = n.boardId, columnId = n.columnId, boardPos = n.boardPos
+                boardId = n.boardId, columnId = n.columnId, boardPos = n.boardPos,
+                attachments = AttachmentJson.decode(n.attachmentsJson)
             )
         }
     }

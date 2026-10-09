@@ -3,10 +3,10 @@ package com.vasanth.vaultnote.ui.list
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.vasanth.vaultnote.data.NoteRepository
-import com.vasanth.vaultnote.data.db.NoteEntity
 import com.vasanth.vaultnote.data.BoardOps
+import com.vasanth.vaultnote.data.NoteRepository
 import com.vasanth.vaultnote.data.db.NoteDao
+import com.vasanth.vaultnote.data.db.NoteEntity
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -37,6 +37,10 @@ class NotesListViewModel @Inject constructor(
 
     private val query = MutableStateFlow("")
     val selectedTag = MutableStateFlow<String?>(null)
+    val currentQuery: String get() = query.value
+
+    /** Ids of the notes selected in multi-select mode. */
+    val selected = MutableStateFlow<Set<String>>(emptySet())
 
     val tags: StateFlow<List<String>> = repo.observeAllTags()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -74,15 +78,81 @@ class NotesListViewModel @Inject constructor(
         }
     }
 
-    fun setQuery(q: String) { query.value = q }
-    fun selectTag(tag: String?) { selectedTag.value = tag }
+    fun setQuery(q: String) {
+        if (q != query.value) { query.value = q; clearSelection() }
+    }
 
+    fun selectTag(tag: String?) {
+        if (tag != selectedTag.value) { selectedTag.value = tag; clearSelection() }
+    }
+
+    // ---------- selection ----------
+    fun toggleSelected(id: String) {
+        selected.value = if (id in selected.value) selected.value - id else selected.value + id
+    }
+
+    fun selectAll(ids: Collection<String>) { selected.value = ids.toSet() }
+
+    fun clearSelection() { if (selected.value.isNotEmpty()) selected.value = emptySet() }
+
+    /** Drops selected ids that are no longer in the list. */
+    fun retainSelection(valid: Set<String>) {
+        val cur = selected.value
+        if (cur.isEmpty()) return
+        val keep = cur.intersect(valid)
+        if (keep != cur) selected.value = keep
+    }
+
+    private fun takeSelection(): List<String> {
+        val ids = selected.value.toList()
+        selected.value = emptySet()
+        return ids
+    }
+
+    fun pinSelected(pin: Boolean) {
+        val ids = takeSelection()
+        viewModelScope.launch { ids.forEach { repo.setPinned(it, pin) } }
+    }
+
+    fun archiveSelected(archive: Boolean): List<String> {
+        val ids = takeSelection()
+        setArchivedIds(ids, archive)
+        return ids
+    }
+
+    fun setArchivedIds(ids: List<String>, archive: Boolean) {
+        viewModelScope.launch { ids.forEach { repo.setArchived(it, archive) } }
+    }
+
+    fun colorSelected(color: String) {
+        val ids = takeSelection()
+        viewModelScope.launch { ids.forEach { repo.setColor(it, color) } }
+    }
+
+    fun trashSelected(): List<String> {
+        val ids = takeSelection()
+        viewModelScope.launch { ids.forEach { id -> noteDao.getById(id)?.let { boards.trash(it) } } }
+        return ids
+    }
+
+    fun restoreIds(ids: List<String>) {
+        viewModelScope.launch { ids.forEach { id -> noteDao.getById(id)?.let { boards.restore(it) } } }
+    }
+
+    fun restoreSelected() = restoreIds(takeSelection())
+
+    fun deleteSelectedForever() {
+        val ids = takeSelection()
+        viewModelScope.launch { ids.forEach { id -> noteDao.getById(id)?.let { boards.deleteForever(it) } } }
+    }
+
+    // ---------- single note (used by the Trash tap menu) ----------
     fun setPinned(id: String, pinned: Boolean) = viewModelScope.launch { repo.setPinned(id, pinned) }
     fun setArchived(id: String, archived: Boolean) = viewModelScope.launch { repo.setArchived(id, archived) }
     fun moveToTrash(id: String) = viewModelScope.launch { noteDao.getById(id)?.let { boards.trash(it) } }
     fun restore(id: String) = viewModelScope.launch { noteDao.getById(id)?.let { boards.restore(it) } }
     fun deleteForever(id: String) = viewModelScope.launch { noteDao.getById(id)?.let { boards.deleteForever(it) } }
+    fun emptyTrash() = viewModelScope.launch { repo.emptyTrash() }
     fun createBoard(title: String, onCreated: (String) -> Unit) =
         viewModelScope.launch { onCreated(boards.createBoard(title)) }
-    fun emptyTrash() = viewModelScope.launch { repo.emptyTrash() }
 }

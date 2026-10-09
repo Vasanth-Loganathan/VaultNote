@@ -40,9 +40,9 @@ data class NoteEntity(
     val remoteModifiedTime: Long? = null,
     val boardId: String? = null,         // set on cards: the board (a note of type "board") they live in
     val columnId: String? = null,
-    @ColumnInfo(defaultValue = "0") val boardPos: Long = 0
+    @ColumnInfo(defaultValue = "0") val boardPos: Long = 0,
+    val attachmentsJson: String = "[]"
 )
-
 @Entity(tableName = "tags")
 data class TagEntity(@PrimaryKey val name: String)
 

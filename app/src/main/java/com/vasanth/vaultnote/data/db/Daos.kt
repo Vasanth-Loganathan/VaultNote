@@ -95,6 +95,9 @@ interface NoteDao {
 
     @Query("UPDATE notes SET dirty = 1 WHERE driveFileId IS NULL")
     suspend fun markUnsyncedDirty()
+
+    @Query("SELECT * FROM notes WHERE attachmentsJson != '[]'")
+    suspend fun getWithAttachments(): List<NoteEntity>
 }
 
 @Dao
@@ -116,6 +119,13 @@ interface TagDao {
 
     @Query("DELETE FROM tags WHERE name NOT IN (SELECT DISTINCT tagName FROM note_tag)")
     suspend fun deleteUnusedTags()
+
+    @Query(
+        """SELECT t.noteId AS noteId, t.tagName AS tagName FROM note_tag t
+           INNER JOIN notes n ON n.id = t.noteId
+           WHERE n.boardId = :boardId AND n.deleted = 0 ORDER BY t.tagName"""
+    )
+    fun observeBoardTags(boardId: String): Flow<List<CardTag>>
 }
 
 @Dao
@@ -146,3 +156,4 @@ interface SyncStateDao {
     @Query("DELETE FROM sync_state WHERE `key` = :key")
     suspend fun delete(key: String)
 }
+data class CardTag(val noteId: String, val tagName: String)

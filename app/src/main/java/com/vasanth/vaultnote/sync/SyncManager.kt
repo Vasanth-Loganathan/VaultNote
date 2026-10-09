@@ -4,6 +4,8 @@ import android.content.Context
 import android.os.SystemClock
 import com.vasanth.vaultnote.crypto.AesGcm
 import com.vasanth.vaultnote.crypto.KeyringManager
+import com.vasanth.vaultnote.data.AttachmentJson
+import com.vasanth.vaultnote.data.AttachmentStore
 import com.vasanth.vaultnote.data.NoteRepository
 import com.vasanth.vaultnote.data.db.NoteDao
 import com.vasanth.vaultnote.data.db.NoteEntity
@@ -62,7 +64,8 @@ class SyncManager @Inject constructor(
     private val tagDao: TagDao,
     private val stateDao: SyncStateDao,
     private val prefs: SyncPrefs,
-    private val scheduler: SyncScheduler
+    private val scheduler: SyncScheduler,
+    private val attachments: AttachmentStore
 ) {
     private val http = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
@@ -71,6 +74,7 @@ class SyncManager @Inject constructor(
         .build()
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val mutex = Mutex()
+    private var pullSkipped = false
 
     private var cachedToken: String? = null
     private var tokenTime = 0L
@@ -145,9 +149,13 @@ class SyncManager @Inject constructor(
     }
 
     private suspend fun runSync(api: DriveApi, dek: SecretKey) {
+        pullSkipped = false
         uploadKeyringIfDirty(api)
         pull(api, dek)
-        push(api, dek)
+        fetchMissingAttachments(api)
+        push(api, dek)                       // notes first, so a note always exists before its images
+        uploadPendingAttachments(api)
+        if (!pullSkipped) cleanupAttachments(api)
     }
 
     // =====================================================================
@@ -190,6 +198,10 @@ class SyncManager @Inject constructor(
         val remoteTime = parseTime(f.modifiedTime)
 
         if (name == KEYRING_NAME) { adoptRemoteKeyring(api, f); return }
+        if (name.endsWith(ATT_SUFFIX)) {
+            stateDao.put(SyncStateEntity(ATT_PREFIX + name.removeSuffix(ATT_SUFFIX), f.id))
+            return
+        }
         if (!name.endsWith(NOTE_SUFFIX)) return
         val noteId = name.removeSuffix(NOTE_SUFFIX)
 
@@ -198,35 +210,50 @@ class SyncManager @Inject constructor(
         if (local != null && local.driveFileId == f.id && local.remoteModifiedTime == remoteTime) return
 
         val blob = api.download(f.id)                    // network errors propagate and retry later
-        val payload = try { decode(blob, dek, noteId) } catch (e: Exception) { return }  // corrupt: skip
+        val payload = try { decode(blob, dek, noteId) } catch (e: Exception) { pullSkipped = true; return }
         val remote = payload.toEntity(noteId, f.id, remoteTime)
 
         when {
-            local == null -> repo.applyRemote(remote, payload.tags)
+            local == null -> { repo.applyRemote(remote, payload.tags); setBase(noteId, remote.updatedAt) }
             local.dirty -> resolveConflict(local, remote, payload.tags, f.id, remoteTime)
-            remote.updatedAt > local.updatedAt -> repo.applyRemote(remote, payload.tags)
-            else -> noteDao.setDriveInfo(local.id, f.id, remoteTime)
+            remote.updatedAt > local.updatedAt -> { repo.applyRemote(remote, payload.tags); setBase(noteId, remote.updatedAt) }
+            else -> { noteDao.setDriveInfo(local.id, f.id, remoteTime); setBase(noteId, remote.updatedAt) }
         }
     }
 
-    /** Both sides changed. The newer version stays, the older one becomes a conflict copy. */
+    /** Both sides changed. A copy is made only if the remote version is really new to this device. */
     private suspend fun resolveConflict(
         local: NoteEntity, remote: NoteEntity, remoteTags: List<String>, fileId: String, remoteTime: Long
     ) {
+        val base = stateDao.get(BASE_PREFIX + local.id)?.toLongOrNull() ?: 0L
         when {
-            remote.updatedAt == local.updatedAt ->
-                noteDao.setDriveInfo(local.id, fileId, remoteTime)       // same edit, just re-link
+            // same edit, or a version this device already uploaded/received: no conflict
+            remote.updatedAt == local.updatedAt || remote.updatedAt <= base -> {
+                noteDao.setDriveInfo(local.id, fileId, remoteTime)
+                setBase(local.id, remote.updatedAt)
+            }
 
             remote.updatedAt > local.updatedAt -> {
                 saveCopy(local, tagDao.tagsForNote(local.id))
                 repo.applyRemote(remote, remoteTags)
+                setBase(local.id, remote.updatedAt)
             }
 
             else -> {
                 saveCopy(remote, remoteTags)
                 noteDao.setDriveInfo(local.id, fileId, remoteTime)       // local stays dirty and overwrites
+                setBase(local.id, remote.updatedAt)
             }
         }
+    }
+
+    private suspend fun setBase(id: String, updatedAt: Long) {
+        val old = stateDao.get(BASE_PREFIX + id)?.toLongOrNull() ?: 0L
+        if (updatedAt > old) stateDao.put(SyncStateEntity(BASE_PREFIX + id, updatedAt.toString()))
+    }
+
+    private suspend fun clearBaseKeys() {
+        stateDao.keysWithPrefix(BASE_PREFIX).forEach { stateDao.delete(it) }
     }
 
     private suspend fun saveCopy(src: NoteEntity, tags: List<String>) {
@@ -242,7 +269,8 @@ class SyncManager @Inject constructor(
                 locked = src.locked,
                 boardId = src.boardId,
                 columnId = src.columnId,
-                boardPos = src.boardPos + 1
+                boardPos = src.boardPos + 1,
+                attachmentsJson = src.attachmentsJson
             ),
             tags
         )
@@ -250,7 +278,8 @@ class SyncManager @Inject constructor(
 
     /** The file disappeared from Drive (deleted on another device). */
     private suspend fun removeLocal(fileId: String) {
-        val n = noteDao.getByDriveFileId(fileId) ?: return
+        val n = noteDao.getByDriveFileId(fileId)
+        if (n == null) { forgetAttachmentFile(fileId); return }
         if (n.dirty) noteDao.clearDriveInfo(n.id)              // has unsynced edits: keep it, upload again
         else repo.deleteForever(n.id, recordTombstone = false)
     }
@@ -296,6 +325,7 @@ class SyncManager @Inject constructor(
             }
         }
         noteDao.setDriveInfo(n.id, meta.id, parseTime(meta.modifiedTime))
+        setBase(n.id, n.updatedAt)
         noteDao.markClean(n.id, n.updatedAt, System.currentTimeMillis())   // only if not edited meanwhile
     }
 
@@ -322,6 +352,8 @@ class SyncManager @Inject constructor(
 
                 if (replaceExisting) {
                     api.listFiles().forEach { api.delete(it.id) }
+                    clearAttachmentKeys()
+                    clearBaseKeys()
                     noteDao.clearAllDriveInfo()
                     api.create(KEYRING_NAME, localRaw.toByteArray(), null)
                 } else if (remoteFile == null) {
@@ -389,6 +421,7 @@ class SyncManager @Inject constructor(
         scheduler.cancelAll()
         stateDao.delete(KEY_TOKEN)
         stateDao.keysWithPrefix("del:").forEach { stateDao.delete(it) }
+        clearAttachmentKeys()
         _status.value = SyncStatus()
     }
 
@@ -412,6 +445,7 @@ class SyncManager @Inject constructor(
             val files = api.listFiles()
             files.forEach { api.delete(it.id) }
             noteDao.clearAllDriveInfo()
+            clearBaseKeys()
             files.size
         }
         disable()
@@ -435,6 +469,55 @@ class SyncManager @Inject constructor(
         } catch (e: Exception) {
             null
         }
+    }
+
+    // =====================================================================
+    //  Attachments (images)
+    // =====================================================================
+    private suspend fun fetchMissingAttachments(api: DriveApi) {
+        for (n in noteDao.getWithAttachments()) {
+            for (a in AttachmentJson.decode(n.attachmentsJson)) {
+                if (attachments.exists(a.id)) continue
+                val key = ATT_PREFIX + a.id
+                val fileId = stateDao.get(key) ?: continue
+                try {
+                    attachments.saveDownloaded(a.id, api.download(fileId))
+                } catch (e: DriveException) {
+                    if (e.code == 404) stateDao.delete(key) else throw e
+                }
+            }
+        }
+    }
+
+    private suspend fun uploadPendingAttachments(api: DriveApi) {
+        for (n in noteDao.getWithAttachments()) {
+            for (a in AttachmentJson.decode(n.attachmentsJson)) {
+                val key = ATT_PREFIX + a.id
+                if (stateDao.get(key) != null) continue
+                val blob = attachments.readBlob(a.id) ?: continue
+                val meta = api.create(a.id + ATT_SUFFIX, blob, null)
+                stateDao.put(SyncStateEntity(key, meta.id))
+            }
+        }
+    }
+
+    /** Deletes Drive image files (and local files) that no note references any more. */
+    private suspend fun cleanupAttachments(api: DriveApi) {
+        val refs = attachments.referencedIds()
+        for (key in stateDao.keysWithPrefix(ATT_PREFIX)) {
+            if (key.removePrefix(ATT_PREFIX) in refs) continue
+            stateDao.get(key)?.let { api.delete(it) }
+            stateDao.delete(key)
+        }
+        attachments.gc()
+    }
+
+    private suspend fun forgetAttachmentFile(fileId: String) {
+        for (k in stateDao.keysWithPrefix(ATT_PREFIX)) if (stateDao.get(k) == fileId) stateDao.delete(k)
+    }
+
+    private suspend fun clearAttachmentKeys() {
+        stateDao.keysWithPrefix(ATT_PREFIX).forEach { stateDao.delete(it) }
     }
 
     // =====================================================================
@@ -470,6 +553,9 @@ class SyncManager @Inject constructor(
         private const val KEY_TOKEN = "changesPageToken"
         private const val KEYRING_NAME = "keyring.bin"
         private const val NOTE_SUFFIX = ".vn"
+        private const val ATT_SUFFIX = ".att"
+        private const val BASE_PREFIX = "base:"     // sync_state: base:<noteId> = newest updatedAt synced on this device
+        private const val ATT_PREFIX = "attf:"      // sync_state: attf:<attId> = Drive file id
         private const val MAX_PAYLOAD_BYTES = 400_000
     }
 }

@@ -20,12 +20,20 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
 import javax.inject.Inject
+import android.net.Uri
+import com.vasanth.vaultnote.data.Attachment
+import com.vasanth.vaultnote.data.AttachmentException
+import com.vasanth.vaultnote.data.AttachmentJson
+import com.vasanth.vaultnote.data.AttachmentStore
+import com.vasanth.vaultnote.data.MAX_ATTACHMENTS
+import kotlinx.coroutines.flow.MutableSharedFlow
 
 @HiltViewModel
 class NoteEditorViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val repo: NoteRepository,
-    private val appLock: AppLockManager
+    private val appLock: AppLockManager,
+    private val store: AttachmentStore
 ) : ViewModel() {
 
     private val argId: String? = savedStateHandle["noteId"]
@@ -39,12 +47,17 @@ class NoteEditorViewModel @Inject constructor(
     val state = MutableStateFlow(NoteEntity(id = noteId, type = argType, title = argTitle ?: ""))
     val tags = MutableStateFlow<List<String>>(emptyList())
     val loaded = MutableStateFlow(false)
+    val messages = MutableSharedFlow<String>(extraBufferCapacity = 8)
+
+    val attachments: List<Attachment> get() = AttachmentJson.decode(state.value.attachmentsJson)
 
     /** Notes that contain a [[link]] to this note. */
     val backlinks: Flow<List<NoteEntity>> = repo.observeBacklinks(noteId)
 
     private var existsInDb = false
     private var saveJob: Job? = null
+    private var savedState: NoteEntity? = null
+    private var savedTags: List<String> = emptyList()
 
     init {
         if (argId == null) {
@@ -55,6 +68,8 @@ class NoteEditorViewModel @Inject constructor(
                     state.value = it
                     tags.value = repo.getTags(argId)
                     existsInDb = true
+                    savedState = it
+                    savedTags = tags.value
                 }
                 loaded.value = true
             }
@@ -117,6 +132,38 @@ class NoteEditorViewModel @Inject constructor(
         viewModelScope.launch { saveNow() }
     }
 
+    // ---------- images ----------
+    fun addImages(uris: List<Uri>) {
+        val room = MAX_ATTACHMENTS - attachments.size
+        if (room <= 0) { messages.tryEmit("Maximum $MAX_ATTACHMENTS images per note"); return }
+        val take = uris.take(room)
+        if (take.size < uris.size) messages.tryEmit("Only $room more image(s) fit (max $MAX_ATTACHMENTS)")
+        viewModelScope.launch {
+            val added = mutableListOf<Attachment>()
+            for (u in take) {
+                try {
+                    added += store.import(u)
+                } catch (e: AttachmentException) {
+                    messages.tryEmit(e.message ?: "Could not add the image")
+                }
+            }
+            if (added.isNotEmpty()) {
+                state.update {
+                    it.copy(attachmentsJson = AttachmentJson.encode(AttachmentJson.decode(it.attachmentsJson) + added))
+                }
+                saveJob?.cancel()
+                saveNow()
+            }
+        }
+    }
+
+    fun removeAttachment(id: String) {
+        state.update {
+            it.copy(attachmentsJson = AttachmentJson.encode(AttachmentJson.decode(it.attachmentsJson).filter { a -> a.id != id }))
+        }
+        scheduleSave()
+    }
+
     suspend fun findNoteByTitle(title: String): NoteEntity? = repo.findByTitle(title)
 
     // ---------- saving ----------
@@ -138,8 +185,9 @@ class NoteEditorViewModel @Inject constructor(
         val n = state.value
         val checklistEmpty = ChecklistJson.decode(n.itemsJson).all { it.text.isBlank() }
         val isEmpty = n.title.isBlank() && n.body.isBlank() && checklistEmpty &&
-                tags.value.isEmpty() && n.reminderAt == null
+                tags.value.isEmpty() && n.reminderAt == null && n.attachmentsJson == "[]"
         if (isEmpty && !existsInDb) return
+        if (existsInDb && n == savedState && tags.value == savedTags) return   // nothing changed: do not touch the note
 
         withContext(NonCancellable) {
             val toSave = if (n.type == NoteType.CHECKLIST) {
@@ -148,6 +196,8 @@ class NoteEditorViewModel @Inject constructor(
             } else n
             repo.saveNote(toSave, tags.value)
             existsInDb = true
+            savedState = n
+            savedTags = tags.value
         }
     }
 }

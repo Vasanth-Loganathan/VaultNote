@@ -1,10 +1,14 @@
 package com.vasanth.vaultnote.ui.list
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.os.Bundle
+import android.view.HapticFeedbackConstants
 import android.view.MenuItem
 import android.view.View
 import android.widget.PopupMenu
+import androidx.activity.OnBackPressedCallback
+import androidx.activity.addCallback
 import androidx.appcompat.widget.SearchView
 import androidx.core.os.bundleOf
 import androidx.core.view.isVisible
@@ -22,6 +26,7 @@ import com.vasanth.vaultnote.R
 import com.vasanth.vaultnote.data.db.NoteEntity
 import com.vasanth.vaultnote.data.db.NoteType
 import com.vasanth.vaultnote.databinding.FragmentNotesListBinding
+import com.vasanth.vaultnote.util.ColorPicker
 import com.vasanth.vaultnote.util.TextPrompt
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
@@ -34,76 +39,33 @@ class NotesListFragment : Fragment(R.layout.fragment_notes_list) {
     private val b get() = _b!!
 
     private lateinit var adapter: NotesAdapter
+    private lateinit var prefs: SharedPreferences
+    private lateinit var backCallback: OnBackPressedCallback
     private var grid = true
+
+    /** Which toolbar is currently shown: null = none yet, true = selection, false = normal. */
+    private var toolbarSelecting: Boolean? = null
+    /** True while the toolbar menu is being swapped, so the search view does not clear the query. */
+    private var swapping = false
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         _b = FragmentNotesListBinding.bind(view)
+        toolbarSelecting = null
 
-        val prefs = requireContext().getSharedPreferences("ui", Context.MODE_PRIVATE)
+        prefs = requireContext().getSharedPreferences("ui", Context.MODE_PRIVATE)
         grid = prefs.getBoolean("grid", true)
-        val mode = vm.mode
 
         // ----- list -----
-        adapter = NotesAdapter(onClick = ::onNoteClick, onLongClick = ::showNoteMenu)
+        adapter = NotesAdapter(onClick = ::onNoteClick, onLongClick = ::onNoteLongClick)
         b.recycler.layoutManager =
             StaggeredGridLayoutManager(if (grid) 2 else 1, StaggeredGridLayoutManager.VERTICAL)
         b.recycler.adapter = adapter
 
-        // ----- toolbar -----
-        b.toolbar.title = when (mode) {
-            ListMode.ARCHIVE -> "Archive"
-            ListMode.TRASH -> "Trash"
-            else -> getString(R.string.app_name)
-        }
-        if (mode != ListMode.ACTIVE) {
-            b.toolbar.setNavigationIcon(R.drawable.ic_arrow_back)
-            b.toolbar.setNavigationOnClickListener { findNavController().popBackStack() }
-        }
-        b.toolbar.inflateMenu(R.menu.menu_notes_list)
-        val menu = b.toolbar.menu
-        val searchItem = menu.findItem(R.id.action_search)
-        searchItem.isVisible = mode == ListMode.ACTIVE
-        menu.findItem(R.id.action_archive).isVisible = mode == ListMode.ACTIVE
-        menu.findItem(R.id.action_trash).isVisible = mode == ListMode.ACTIVE
-        menu.findItem(R.id.action_empty_trash).isVisible = mode == ListMode.TRASH
-        menu.findItem(R.id.action_today).isVisible = mode == ListMode.ACTIVE
-        menu.findItem(R.id.action_settings).isVisible = mode == ListMode.ACTIVE
-        applyGrid(menu.findItem(R.id.action_view_toggle))
-
-        val searchView = searchItem.actionView as SearchView
-        searchView.queryHint = "Search notes"
-        searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
-            override fun onQueryTextSubmit(query: String?) = false
-            override fun onQueryTextChange(newText: String?): Boolean {
-                vm.setQuery(newText.orEmpty()); return true
-            }
-        })
-        searchItem.setOnActionExpandListener(object : MenuItem.OnActionExpandListener {
-            override fun onMenuItemActionExpand(item: MenuItem) = true
-            override fun onMenuItemActionCollapse(item: MenuItem): Boolean {
-                vm.setQuery(""); return true
-            }
-        })
-
-        b.toolbar.setOnMenuItemClickListener { item ->
-            when (item.itemId) {
-                R.id.action_view_toggle -> {
-                    grid = !grid
-                    prefs.edit().putBoolean("grid", grid).apply()
-                    applyGrid(item); true
-                }
-                R.id.action_archive -> { openList(ListMode.ARCHIVE); true }
-                R.id.action_trash -> { openList(ListMode.TRASH); true }
-                R.id.action_empty_trash -> { confirmEmptyTrash(); true }
-                R.id.action_today -> { findNavController().navigate(R.id.action_list_to_today); true }
-                R.id.action_settings -> { findNavController().navigate(R.id.action_list_to_settings); true }
-                else -> false
-            }
-        }
+        // ----- toolbar (menu is set up in renderToolbar) -----
+        b.toolbar.setOnMenuItemClickListener { onToolbarItem(it) }
 
         // ----- FAB -----
-        b.fab.isVisible = mode == ListMode.ACTIVE
         b.fab.setOnClickListener { v ->
             val popup = PopupMenu(requireContext(), v)
             popup.menu.add(0, 1, 0, "New note")
@@ -122,18 +84,177 @@ class NotesListFragment : Fragment(R.layout.fragment_notes_list) {
             popup.show()
         }
 
+        // back leaves selection mode first
+        backCallback = requireActivity().onBackPressedDispatcher
+            .addCallback(viewLifecycleOwner, false) { vm.clearSelection() }
+
         // ----- observe -----
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch {
-                    vm.items.collect {
-                        adapter.submitList(it)
-                        b.emptyView.isVisible = it.isEmpty()
+                    vm.items.collect { list ->
+                        adapter.submitList(list)
+                        b.emptyView.isVisible = list.isEmpty()
+                        vm.retainSelection(list.filterIsInstance<ListItem.Row>().map { it.note.id }.toSet())
+                        renderToolbar(vm.selected.value)
                     }
                 }
                 launch { vm.tags.collect { renderChips(it) } }
+                launch {
+                    vm.selected.collect { sel ->
+                        adapter.setSelection(sel)
+                        backCallback.isEnabled = sel.isNotEmpty()
+                        renderToolbar(sel)
+                    }
+                }
             }
         }
+    }
+
+    // =====================================================================
+    //  Toolbar: normal and selection
+    // =====================================================================
+    private fun renderToolbar(sel: Set<String>) {
+        if (_b == null) return
+        val selecting = sel.isNotEmpty()
+        if (toolbarSelecting != selecting) {
+            toolbarSelecting = selecting
+            if (selecting) setupSelectionToolbar() else setupNormalToolbar()
+        }
+        if (selecting) updateSelectionToolbar(sel)
+        b.fab.isVisible = !selecting && vm.mode == ListMode.ACTIVE
+    }
+
+    private fun setupNormalToolbar() {
+        swapping = true
+        val mode = vm.mode
+        val tb = b.toolbar
+        tb.menu.clear()
+        tb.inflateMenu(R.menu.menu_notes_list)
+
+        tb.title = when (mode) {
+            ListMode.ARCHIVE -> "Archive"
+            ListMode.TRASH -> "Trash"
+            else -> getString(R.string.app_name)
+        }
+        if (mode != ListMode.ACTIVE) {
+            tb.setNavigationIcon(R.drawable.ic_arrow_back)
+            tb.setNavigationOnClickListener { findNavController().popBackStack() }
+        } else {
+            tb.navigationIcon = null
+            tb.setNavigationOnClickListener(null)
+        }
+
+        val menu = tb.menu
+        val searchItem = menu.findItem(R.id.action_search)
+        searchItem.isVisible = mode == ListMode.ACTIVE
+        menu.findItem(R.id.action_archive).isVisible = mode == ListMode.ACTIVE
+        menu.findItem(R.id.action_trash).isVisible = mode == ListMode.ACTIVE
+        menu.findItem(R.id.action_empty_trash).isVisible = mode == ListMode.TRASH
+        menu.findItem(R.id.action_today).isVisible = mode == ListMode.ACTIVE
+        menu.findItem(R.id.action_settings).isVisible = mode == ListMode.ACTIVE
+        applyGrid(menu.findItem(R.id.action_view_toggle))
+
+        val searchView = searchItem.actionView as SearchView
+        searchView.queryHint = "Search notes"
+        searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
+            override fun onQueryTextSubmit(query: String?) = false
+            override fun onQueryTextChange(newText: String?): Boolean {
+                if (!swapping) vm.setQuery(newText.orEmpty())
+                return true
+            }
+        })
+        searchItem.setOnActionExpandListener(object : MenuItem.OnActionExpandListener {
+            override fun onMenuItemActionExpand(item: MenuItem) = true
+            override fun onMenuItemActionCollapse(item: MenuItem): Boolean {
+                if (!swapping) vm.setQuery("")
+                return true
+            }
+        })
+
+        // keep an active search visible after leaving selection mode
+        val q = vm.currentQuery
+        if (q.isNotBlank() && mode == ListMode.ACTIVE) {
+            searchItem.expandActionView()
+            searchView.setQuery(q, false)
+            searchView.clearFocus()
+        }
+        swapping = false
+    }
+
+    private fun setupSelectionToolbar() {
+        swapping = true
+        val tb = b.toolbar
+        tb.menu.clear()
+        tb.inflateMenu(R.menu.menu_notes_selection)
+        tb.setNavigationIcon(R.drawable.ic_sel_close)
+        tb.setNavigationOnClickListener { vm.clearSelection() }
+        swapping = false
+    }
+
+    private fun updateSelectionToolbar(sel: Set<String>) {
+        val mode = vm.mode
+        val menu = b.toolbar.menu
+        val notes = selectedNotes()
+        b.toolbar.title = "${sel.size} selected"
+
+        menu.findItem(R.id.action_sel_pin)?.apply {
+            isVisible = mode == ListMode.ACTIVE
+            title = if (notes.isNotEmpty() && notes.all { it.pinned }) "Unpin" else "Pin"
+        }
+        menu.findItem(R.id.action_sel_archive)?.apply {
+            isVisible = mode != ListMode.TRASH
+            title = if (mode == ListMode.ARCHIVE) "Unarchive" else "Archive"
+        }
+        menu.findItem(R.id.action_sel_color)?.isVisible = mode != ListMode.TRASH
+        menu.findItem(R.id.action_sel_trash)?.isVisible = mode != ListMode.TRASH
+        menu.findItem(R.id.action_sel_restore)?.isVisible = mode == ListMode.TRASH
+        menu.findItem(R.id.action_sel_delete_forever)?.isVisible = mode == ListMode.TRASH
+    }
+
+    private fun onToolbarItem(item: MenuItem): Boolean {
+        when (item.itemId) {
+            // ----- normal -----
+            R.id.action_view_toggle -> {
+                grid = !grid
+                prefs.edit().putBoolean("grid", grid).apply()
+                applyGrid(item)
+            }
+            R.id.action_archive -> openList(ListMode.ARCHIVE)
+            R.id.action_trash -> openList(ListMode.TRASH)
+            R.id.action_empty_trash -> confirmEmptyTrash()
+            R.id.action_today -> findNavController().navigate(R.id.action_list_to_today)
+            R.id.action_settings -> findNavController().navigate(R.id.action_list_to_settings)
+
+            // ----- selection -----
+            R.id.action_sel_all -> vm.selectAll(rows().map { it.id })
+            R.id.action_sel_pin -> vm.pinSelected(!selectedNotes().all { it.pinned })
+            R.id.action_sel_archive -> {
+                val archive = vm.mode != ListMode.ARCHIVE
+                val ids = vm.archiveSelected(archive)
+                Snackbar.make(b.root, if (archive) "${ids.size} archived" else "${ids.size} unarchived", Snackbar.LENGTH_LONG)
+                    .setAction("Undo") { vm.setArchivedIds(ids, !archive) }.show()
+            }
+            R.id.action_sel_color ->
+                ColorPicker.show(requireContext(), "default") { vm.colorSelected(it) }
+            R.id.action_sel_trash -> {
+                val ids = vm.trashSelected()
+                Snackbar.make(b.root, "${ids.size} moved to trash", Snackbar.LENGTH_LONG)
+                    .setAction("Undo") { vm.restoreIds(ids) }.show()
+            }
+            R.id.action_sel_restore -> vm.restoreSelected()
+            R.id.action_sel_delete_forever -> confirmDeleteSelected()
+            else -> return false
+        }
+        return true
+    }
+
+    private fun rows(): List<NoteEntity> =
+        vm.items.value.filterIsInstance<ListItem.Row>().map { it.note }
+
+    private fun selectedNotes(): List<NoteEntity> {
+        val s = vm.selected.value
+        return rows().filter { it.id in s }
     }
 
     private fun applyGrid(item: MenuItem?) {
@@ -160,7 +281,9 @@ class NotesListFragment : Fragment(R.layout.fragment_notes_list) {
         tags.forEach { addChip(it, it) }
     }
 
-    // ----- navigation -----
+    // =====================================================================
+    //  Navigation and clicks
+    // =====================================================================
     private fun openList(mode: String) =
         findNavController().navigate(R.id.action_list_to_list, bundleOf("mode" to mode))
 
@@ -174,43 +297,27 @@ class NotesListFragment : Fragment(R.layout.fragment_notes_list) {
 
     private fun onNoteClick(note: NoteEntity) {
         when {
-            vm.mode == ListMode.TRASH -> view?.let { showNoteMenu(it, note) }
+            vm.selected.value.isNotEmpty() -> vm.toggleSelected(note.id)
+            vm.mode == ListMode.TRASH -> view?.let { showTrashMenu(it, note) }
             note.type == NoteType.BOARD -> openBoard(note.id)
             else -> openEditor(note.id, note.type)
         }
     }
 
-    // ----- long-press menu -----
-    private fun showNoteMenu(anchor: View, note: NoteEntity) {
+    private fun onNoteLongClick(anchor: View, note: NoteEntity) {
+        anchor.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        vm.toggleSelected(note.id)
+    }
+
+    // ----- trash tap menu -----
+    private fun showTrashMenu(anchor: View, note: NoteEntity) {
         val popup = PopupMenu(requireContext(), anchor)
-        val m = popup.menu
-        when (vm.mode) {
-            ListMode.TRASH -> {
-                m.add(0, 1, 0, "Restore")
-                m.add(0, 2, 1, "Delete forever")
-            }
-            ListMode.ARCHIVE -> {
-                m.add(0, 3, 0, "Unarchive")
-                m.add(0, 4, 1, "Move to trash")
-            }
-            else -> {
-                m.add(0, 5, 0, if (note.pinned) "Unpin" else "Pin")
-                m.add(0, 6, 1, "Archive")
-                m.add(0, 4, 2, "Move to trash")
-            }
-        }
+        popup.menu.add(0, 1, 0, "Restore")
+        popup.menu.add(0, 2, 1, "Delete forever")
         popup.setOnMenuItemClickListener {
             when (it.itemId) {
                 1 -> vm.restore(note.id)
                 2 -> confirmDeleteForever(note)
-                3 -> vm.setArchived(note.id, false)
-                4 -> {
-                    vm.moveToTrash(note.id)
-                    Snackbar.make(b.root, "Moved to trash", Snackbar.LENGTH_LONG)
-                        .setAction("Undo") { vm.restore(note.id) }.show()
-                }
-                5 -> vm.setPinned(note.id, !note.pinned)
-                6 -> vm.setArchived(note.id, true)
             }
             true
         }
@@ -222,6 +329,16 @@ class NotesListFragment : Fragment(R.layout.fragment_notes_list) {
             .setTitle("Delete forever?")
             .setMessage("This note cannot be recovered.")
             .setPositiveButton("Delete") { _, _ -> vm.deleteForever(note.id) }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun confirmDeleteSelected() {
+        val n = vm.selected.value.size
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle("Delete $n forever?")
+            .setMessage("They cannot be recovered.")
+            .setPositiveButton("Delete") { _, _ -> vm.deleteSelectedForever() }
             .setNegativeButton("Cancel", null)
             .show()
     }

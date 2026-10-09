@@ -51,6 +51,14 @@
                 android:id="@+id/tagGroup"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                    android:visibility="gone" />
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/attachRecycler"
+                android:layout_width="match_parent"
+                android:layout_height="96dp"
+                android:layout_marginVertical="8dp"
+                android:clipToPadding="false"
                 android:visibility="gone" />
 
             <EditText
@@ -176,6 +184,14 @@
             android:layout_height="wrap_content"
             android:contentDescription="Set reminder"
             app:icon="@drawable/ic_alarm" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/imageButton"
+            style="@style/Widget.Material3.Button.IconButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:contentDescription="Add image"
+            app:icon="@drawable/ic_image" />
 
         <TextView
             android:id="@+id/editedText"

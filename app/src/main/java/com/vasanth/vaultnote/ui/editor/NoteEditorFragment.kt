@@ -51,6 +51,11 @@ import com.vasanth.vaultnote.util.NoteColors
 import com.vasanth.vaultnote.util.ReminderFormat
 import com.vasanth.vaultnote.util.BiometricHelper
 import com.vasanth.vaultnote.util.SecureClipboard
+import androidx.activity.result.PickVisualMediaRequest
+import com.vasanth.vaultnote.data.AttachmentJson
+import com.vasanth.vaultnote.data.AttachmentStore
+import com.vasanth.vaultnote.data.MAX_ATTACHMENTS
+import javax.inject.Inject
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -70,6 +75,14 @@ class NoteEditorFragment : Fragment(R.layout.fragment_note_editor) {
     private val b get() = _b!!
 
     private lateinit var checkAdapter: ChecklistAdapter
+
+    @Inject lateinit var attachmentStore: AttachmentStore
+    private lateinit var attachAdapter: AttachmentAdapter
+
+    private val pickImages =
+        registerForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(MAX_ATTACHMENTS)) { uris ->
+            if (uris.isNotEmpty()) vm.addImages(uris)
+        }
 
     /** false until the screen has been filled from the ViewModel; blocks accidental saves. */
     private var populated = false
@@ -148,6 +161,22 @@ class NoteEditorFragment : Fragment(R.layout.fragment_note_editor) {
         b.reminderChip.setOnCloseIconClickListener { vm.setReminder(null, null) }
         b.unlockNoteButton.setOnClickListener { gateIfNeeded() }
 
+        // ----- images -----
+        attachAdapter = AttachmentAdapter(attachmentStore, viewLifecycleOwner.lifecycleScope) { index ->
+            ImageViewer.show(
+                requireContext(), attachmentStore, vm.attachments, index, viewLifecycleOwner
+            ) { id -> vm.removeAttachment(id) }
+        }
+        b.attachRecycler.layoutManager =
+            LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
+        b.attachRecycler.adapter = attachAdapter
+        b.imageButton.setOnClickListener {
+            if (vm.attachments.size >= MAX_ATTACHMENTS) {
+                toast("Maximum $MAX_ATTACHMENTS images per note")
+            } else {
+                pickImages.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            }
+        }
         // ----- observe -----
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -167,6 +196,15 @@ class NoteEditorFragment : Fragment(R.layout.fragment_note_editor) {
                         .collect { (at, repeat) -> renderReminder(at, repeat) }
                 }
                 launch { vm.tags.collect { renderTags(it) } }
+                launch {
+                    vm.state.map { it.attachmentsJson }.distinctUntilChanged().collect {
+                        val list = AttachmentJson.decode(it)
+                        attachAdapter.submit(list)
+                        b.attachRecycler.isVisible = list.isNotEmpty()
+                    }
+                }
+                launch { vm.messages.collect { toast(it) } }
+                launch { attachmentStore.arrived.collect { attachAdapter.refresh() } }
                 launch { vm.backlinks.collect { renderBacklinks(it) } }
             }
         }
