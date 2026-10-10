@@ -5,11 +5,9 @@
 ![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)
 ![Kotlin](https://img.shields.io/badge/Kotlin-100%25-7F52FF?logo=kotlin&logoColor=white)
 ![UI](https://img.shields.io/badge/UI-XML%20Views%20%2B%20Material%203-6750A4)
-![Status](https://img.shields.io/badge/status-lab%20mini%20project-blue)
 
 VaultNote keeps every note encrypted with a random vault key that only you can unlock. The app works fully offline. If you turn on sync, it stores only unreadable, encrypted files in a hidden folder of your own Google Drive, so neither Google nor the developer can read your notes.
 
-> Built as an Android lab mini project from the *VaultNotes Technical Design Document*.
 
 <!-- Add screenshots here, for example:
 <p align="center">
@@ -144,16 +142,6 @@ The cryptography has JVM unit tests that run without a device:
 `CryptoTest` covers the encrypt and decrypt round trip, tamper detection, wrong key or associated data, a PBKDF2 test vector, and recovery key encoding. It also prints a cross-platform Base64 test vector (key bytes `00` to `1f`, IV bytes `64` to `6f`, associated data `note-1`) so another client, such as a future web app, can prove it uses identical crypto.
 
 Sync, boards and images are verified by manual test runs on a phone and a second device.
-
-## Known limitations
-
-- UI strings are still in code and will move to `strings.xml`
-- Locked notes are not searchable
-- `[[links]]` resolve when the linking note is saved, so the target must exist first
-- Sync runs only while the app is unlocked (reminders still fire)
-- Notes over about 400 KB of content stay on the phone
-- The home tag filter shows standalone notes only; cards inside boards are found with search
-- No QR export for the recovery key yet
 
 ## Privacy
 
