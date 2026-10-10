@@ -7,7 +7,11 @@ import kotlinx.serialization.json.Json
 import java.util.UUID
 
 @Serializable
-data class BoardColumn(val id: String = UUID.randomUUID().toString(), val name: String)
+data class BoardColumn(
+    val id: String = UUID.randomUUID().toString(),
+    val name: String,
+    val color: String = "default"
+)
 
 object BoardJson {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }

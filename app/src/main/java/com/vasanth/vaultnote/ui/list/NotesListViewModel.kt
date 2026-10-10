@@ -146,6 +146,13 @@ class NotesListViewModel @Inject constructor(
         viewModelScope.launch { ids.forEach { id -> noteDao.getById(id)?.let { boards.deleteForever(it) } } }
     }
 
+    suspend fun boardChoices() = boards.boardChoices()
+
+    fun moveSelectedToBoard(boardId: String, columnId: String, onDone: (Int) -> Unit) {
+        val ids = takeSelection()
+        viewModelScope.launch { onDone(boards.moveToBoard(ids, boardId, columnId)) }
+    }
+
     // ---------- single note (used by the Trash tap menu) ----------
     fun setPinned(id: String, pinned: Boolean) = viewModelScope.launch { repo.setPinned(id, pinned) }
     fun setArchived(id: String, archived: Boolean) = viewModelScope.launch { repo.setArchived(id, archived) }

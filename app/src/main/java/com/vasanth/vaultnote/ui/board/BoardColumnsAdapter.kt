@@ -10,6 +10,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.color.MaterialColors
 import com.vasanth.vaultnote.data.db.NoteEntity
 import com.vasanth.vaultnote.databinding.ItemBoardColumnBinding
+import com.vasanth.vaultnote.util.NoteColors
 
 class BoardColumnsAdapter(
     private val onAddCard: (ColumnUi) -> Unit,
@@ -34,7 +35,7 @@ class BoardColumnsAdapter(
     inner class VH(private val b: ItemBoardColumnBinding) : RecyclerView.ViewHolder(b.root) {
         private var data: ColumnUi? = null
         private val cards = BoardCardsAdapter(onCardClick, onCardMenu, onCardDrag)
-
+        private val baseColors = b.root.cardBackgroundColor
         val columnId: String? get() = data?.column?.id
         val cardsRecycler: RecyclerView get() = b.cardsRecycler
 
@@ -50,6 +51,8 @@ class BoardColumnsAdapter(
         fun bind(c: ColumnUi) {
             data = c
             b.columnTitle.text = c.column.name
+            if (c.column.color == "default") b.root.setCardBackgroundColor(baseColors)
+            else b.root.setCardBackgroundColor(NoteColors.background(b.root.context, c.column.color))
             cards.submitList(c.cards)
             setHighlight(false)
         }

@@ -148,6 +148,24 @@ class BoardViewModel @Inject constructor(
         }
     }
 
+    fun setColumnColor(id: String, color: String) {
+        val b = current?.board ?: return
+        viewModelScope.launch {
+            ops.saveBoard(b, cols().map { if (it.id == id) it.copy(color = color) else it })
+        }
+    }
+
+    suspend fun boardChoices() = ops.boardChoices()
+
+    fun moveToBoard(card: NoteEntity, boardId: String, columnId: String) {
+        viewModelScope.launch { ops.moveToBoard(listOf(card.id), boardId, columnId) }
+    }
+
+    fun moveOut(card: NoteEntity) { viewModelScope.launch { ops.moveOut(card) } }
+
+    /** Undo of "Move out of board": restores the card exactly as it was. */
+    fun putBack(card: NoteEntity) { viewModelScope.launch { ops.saveCard(card) } }
+
     fun trashCard(card: NoteEntity) { viewModelScope.launch { ops.trash(card) } }
     fun restoreCard(card: NoteEntity) { viewModelScope.launch { ops.restore(card) } }
 }

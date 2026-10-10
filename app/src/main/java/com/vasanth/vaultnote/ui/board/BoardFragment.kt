@@ -298,14 +298,16 @@ class BoardFragment : Fragment(R.layout.fragment_board) {
         val count = ui?.columns?.size ?: return
         val popup = PopupMenu(requireContext(), anchor)
         popup.menu.add(0, 1, 0, "Rename")
-        if (index > 0) popup.menu.add(0, 2, 1, "Move left")
-        if (index < count - 1) popup.menu.add(0, 3, 2, "Move right")
-        popup.menu.add(0, 4, 3, "Delete column")
+        popup.menu.add(0, 5, 1, "Color")
+        if (index > 0) popup.menu.add(0, 2, 2, "Move left")
+        if (index < count - 1) popup.menu.add(0, 3, 3, "Move right")
+        popup.menu.add(0, 4, 4, "Delete column")
         popup.setOnMenuItemClickListener {
             when (it.itemId) {
                 1 -> TextPrompt.show(requireContext(), "Rename column", "Column name", col.column.name) { n ->
                     vm.renameColumn(col.column.id, n)
                 }
+                5 -> ColorPicker.show(requireContext(), col.column.color) { c -> vm.setColumnColor(col.column.id, c) }
                 2 -> vm.moveColumn(col.column.id, -1)
                 3 -> vm.moveColumn(col.column.id, 1)
                 4 -> confirmDeleteColumn(col)
@@ -331,10 +333,24 @@ class BoardFragment : Fragment(R.layout.fragment_board) {
     private fun showCardMenu(anchor: View, card: NoteEntity) {
         val popup = PopupMenu(requireContext(), anchor)
         popup.menu.add(0, 1, 0, "Move to column…")
-        popup.menu.add(0, 2, 1, "Delete")
+        popup.menu.add(0, 3, 1, "Move to another board…")
+        popup.menu.add(0, 4, 2, "Move out of board")
+        popup.menu.add(0, 2, 3, "Delete")
         popup.setOnMenuItemClickListener {
             when (it.itemId) {
                 1 -> pickColumn(card)
+                3 -> viewLifecycleOwner.lifecycleScope.launch {
+                    val boards = vm.boardChoices()
+                    BoardPicker.show(requireContext(), boards, vm.boardId) { boardId, columnId ->
+                        vm.moveToBoard(card, boardId, columnId)
+                        _b?.let { bd -> Snackbar.make(bd.root, "Moved to another board", Snackbar.LENGTH_SHORT).show() }
+                    }
+                }
+                4 -> {
+                    vm.moveOut(card)
+                    Snackbar.make(b.root, "Moved out of board. It is now a normal note", Snackbar.LENGTH_LONG)
+                        .setAction("Undo") { vm.putBack(card) }.show()
+                }
                 2 -> {
                     vm.trashCard(card)
                     Snackbar.make(b.root, "Card moved to trash", Snackbar.LENGTH_LONG)

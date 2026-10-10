@@ -51,4 +51,24 @@ class BoardOps @Inject constructor(
             noteDao.getCardsOfBoard(note.id).forEach { repo.deleteForever(it.id) }
         repo.deleteForever(note.id)
     }
+
+    suspend fun boardChoices(): List<NoteEntity> = noteDao.getBoards()
+
+    /** Puts notes and checklists at the end of a column. Boards are skipped. Returns how many moved. */
+    suspend fun moveToBoard(ids: List<String>, boardId: String, columnId: String): Int {
+        var pos = noteDao.maxCardPos(boardId, columnId) + 1
+        var moved = 0
+        for (id in ids) {
+            val n = noteDao.getById(id) ?: continue
+            if (n.type == NoteType.BOARD || n.id == boardId) continue
+            saveCard(n.copy(boardId = boardId, columnId = columnId, boardPos = pos++, archived = false, pinned = false))
+            moved++
+        }
+        return moved
+    }
+
+    /** A card becomes a normal note again. */
+    suspend fun moveOut(card: NoteEntity) =
+        saveCard(card.copy(boardId = null, columnId = null, boardPos = 0))
+
 }

@@ -45,6 +45,11 @@ interface NoteDao {
 
     @Query("SELECT * FROM notes WHERE boardId = :boardId")
     suspend fun getCardsOfBoard(boardId: String): List<NoteEntity>
+    @Query("SELECT * FROM notes WHERE type = 'board' AND deleted = 0 AND archived = 0 ORDER BY title COLLATE NOCASE")
+    suspend fun getBoards(): List<NoteEntity>
+
+    @Query("SELECT COALESCE(MAX(boardPos), -1) FROM notes WHERE boardId = :boardId AND columnId = :columnId AND deleted = 0")
+    suspend fun maxCardPos(boardId: String, columnId: String): Long
 
     @Query("SELECT * FROM notes WHERE deleted = 0 AND reminderAt IS NOT NULL")
     suspend fun getWithReminders(): List<NoteEntity>

@@ -30,6 +30,8 @@ import com.vasanth.vaultnote.util.ColorPicker
 import com.vasanth.vaultnote.util.TextPrompt
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
+import android.widget.Toast
+import com.vasanth.vaultnote.ui.board.BoardPicker
 
 @AndroidEntryPoint
 class NotesListFragment : Fragment(R.layout.fragment_notes_list) {
@@ -242,11 +244,29 @@ class NotesListFragment : Fragment(R.layout.fragment_notes_list) {
                 Snackbar.make(b.root, "${ids.size} moved to trash", Snackbar.LENGTH_LONG)
                     .setAction("Undo") { vm.restoreIds(ids) }.show()
             }
+            R.id.action_sel_move_board -> moveSelectedToBoard()
             R.id.action_sel_restore -> vm.restoreSelected()
             R.id.action_sel_delete_forever -> confirmDeleteSelected()
             else -> return false
         }
         return true
+    }
+
+    private fun moveSelectedToBoard() {
+        val chosen = selectedNotes()
+        if (chosen.isEmpty()) return
+        if (chosen.all { it.type == NoteType.BOARD }) {
+            Toast.makeText(requireContext(), "A board cannot go inside another board", Toast.LENGTH_LONG).show()
+            return
+        }
+        viewLifecycleOwner.lifecycleScope.launch {
+            val boards = vm.boardChoices()
+            BoardPicker.show(requireContext(), boards, null) { boardId, columnId ->
+                vm.moveSelectedToBoard(boardId, columnId) { n ->
+                    _b?.let { Snackbar.make(it.root, "$n moved to the board", Snackbar.LENGTH_LONG).show() }
+                }
+            }
+        }
     }
 
     private fun rows(): List<NoteEntity> =

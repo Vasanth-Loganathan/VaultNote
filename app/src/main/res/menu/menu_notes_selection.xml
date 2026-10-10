@@ -26,6 +26,10 @@
         android:title="Delete forever"
         app:showAsAction="ifRoom" />
     <item
+        android:id="@+id/action_sel_move_board"
+        android:title="Move to board…"
+        app:showAsAction="never" />
+    <item
         android:id="@+id/action_sel_pin"
         android:title="Pin"
         app:showAsAction="never" />
