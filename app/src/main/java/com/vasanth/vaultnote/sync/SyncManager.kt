@@ -308,7 +308,6 @@ class SyncManager @Inject constructor(
     private suspend fun pushNote(api: DriveApi, dek: SecretKey, n: NoteEntity) {
         val tags = tagDao.tagsForNote(n.id)
         val raw = json.encodeToString(NotePayload.from(n, tags)).toByteArray()
-        if (raw.size > MAX_PAYLOAD_BYTES) return                 // too large: stays local only
         val blob = AesGcm.encrypt(dek, n.id.toByteArray(), gzip(raw))
         val name = n.id + NOTE_SUFFIX
 
@@ -556,6 +555,5 @@ class SyncManager @Inject constructor(
         private const val ATT_SUFFIX = ".att"
         private const val BASE_PREFIX = "base:"     // sync_state: base:<noteId> = newest updatedAt synced on this device
         private const val ATT_PREFIX = "attf:"      // sync_state: attf:<attId> = Drive file id
-        private const val MAX_PAYLOAD_BYTES = 400_000
     }
 }
